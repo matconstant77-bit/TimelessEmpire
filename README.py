@@ -1,2 +1,0 @@
-# TimelessEmpire
-print("CA FONCTIONNE")
