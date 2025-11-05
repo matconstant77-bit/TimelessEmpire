@@ -1,2 +1,0 @@
-# TimelessEmpire
-import python
