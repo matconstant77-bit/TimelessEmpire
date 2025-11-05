@@ -1,2 +1,2 @@
 # TimelessEmpire
-Projet jeu équipe 404
+print("Projet jeu équipe 404")
