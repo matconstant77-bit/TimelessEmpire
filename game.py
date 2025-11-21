@@ -1,6 +1,14 @@
 # Contient le code du jeu
- 
-import pygame
+import pygame #importation de pygame
+from pygame.locals import *
+
+pygame.init() #démarrage de pygame
+pygame.mixer.init()
+
+"""
+Ajout des variables à mettre ici
+
+"""
 
 # Tuiles de terrain (à compléter avec les bons chemins d'accès aux images)
 
@@ -23,18 +31,6 @@ ice_tuile = pygame.image.load("")
 desert_tuile = pygame.image.load("")
 
 desert_mountain_tuile = pygame.image.load("")
-
-=======
-import pygame #importation de pygame
-from pygame.locals import *
-
-pygame.init() #démarrage de pygame
-pygame.mixer.init()
-
-"""
-Ajout des variables à mettre ici
-
-"""
 
 #création d'une fenêtre
 fenetre=pygame.display.set_mode((1920,1080))#fenêtre de taille 1920*1080
