@@ -15,6 +15,8 @@ Ajout des variables à mettre ici
 #création d'une fenêtre
 fenetre=pygame.display.set_mode((1920,1080))#fenêtre de taille 1920*1080
 
+
+
 #chargement des images
 liste_actuelle=[]
 
@@ -101,6 +103,20 @@ boutons_menu = [
     Button("Options", 500, "options"),
     Button("Quit", 600, "quit"),
 ]
+
+running = True
+clock = pygame.time.Clock()
+
+while running:
+    clock.tick(60)  # Limite à 60 FPS
+    fenetre.blit (menu, (0, 0))  # Affiche le fond du menu
+    mouse_pos = pygame.mouse.get_pos()
+    mouse_pressed = pygame.mouse.get_pressed()
+
+    title = FONT_TITLE.render("Timeless Empire", True, BLANC)
+    shadow = FONT_TITLE.render("Timeless Empire", True, SHADOW)
+    fenetre.blit(shadow, (960 - title.get_width() // 2 + 3, 103))
+    fenetre.blit(title, (960 - title.get_width() // 2, 100))
 
 
         
