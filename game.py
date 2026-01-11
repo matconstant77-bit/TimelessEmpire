@@ -83,7 +83,7 @@ class Button:
         color = HOVER_BLUE if is_hover else TRANSLUCENT_BLUE
         button_surface = pygame.Surface((self.widtht, self.height), pygame.SRCALPHA)
         pygame.draw.rect(button_surface, color, (0, 0, self.widtht, self.height), border_radius=16)
-        win.blit(button_surface, self.rect.)
+        win.blit(button_surface, self.rect)
 
         text_surf = FONT_BUTTON.render(self.text, True, BLANC)
         text_rect = text_surf.get_rect(center=self.rect.center)
