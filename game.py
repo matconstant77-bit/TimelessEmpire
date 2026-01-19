@@ -8,6 +8,9 @@ from pygame.locals import *
 pygame.init() #démarrage de pygame
 pygame.mixer.init()
 
+running = True
+clock = pygame.time.Clock()
+
 """
 Ajout des variables à mettre ici
 
@@ -46,19 +49,19 @@ except:
 
 # Tuiles de terrain (à compléter avec les bons chemins d'accès aux images)
 
-tuiles = {
-    'mountain_grass': pygame.image.load(""),
-    'mountain_forest': pygame.image.load(""),
-    'mountain_snow': pygame.image.load(""),
-    'mountain_sand': pygame.image.load(""),
-    'plain_grass': pygame.image.load(""),
-    'plain_forest': pygame.image.load(""),
-    'plain_snow': pygame.image.load(""),
-    'desert': pygame.image.load(""),
-    'forest': pygame.image.load(""),
-    'snow_forest': pygame.image.load(""),
-    'water': pygame.image.load(""),
-}
+#tuiles = {
+#    'mountain_grass': pygame.image.load(""),
+#    'mountain_forest': pygame.image.load(""),
+#    'mountain_snow': pygame.image.load(""),
+#    'mountain_sand': pygame.image.load(""),
+#    'plain_grass': pygame.image.load(""),
+#    'plain_forest': pygame.image.load(""),
+#    'plain_snow': pygame.image.load(""),
+#    'desert': pygame.image.load(""),
+#    'forest': pygame.image.load(""),
+#    'snow_forest': pygame.image.load(""),
+#    'water': pygame.image.load(""),
+#}
 
 # création d'une classe Hexagone pour créer la map
 
@@ -104,12 +107,11 @@ boutons_menu = [
     Button("Quit", 600, "quit"),
 ]
 
-running = True
-clock = pygame.time.Clock()
+
 
 while running:
     clock.tick(60)  # Limite à 60 FPS
-    fenetre.blit (menu, (0, 0))  # Affiche le fond du menu
+    fenetre.blit(menu, (0, 0))  # Affiche le fond du menu
     mouse_pos = pygame.mouse.get_pos()
     mouse_pressed = pygame.mouse.get_pressed()
 
