@@ -44,7 +44,7 @@ desert_tuile = pygame.image.load("")
 desert_mountain_tuile = pygame.image.load("")
 """
 #musique
-menu_music = "menu_music.mp3"
+menu_music = "menu-musique.mp3"
 
 #couleurs
 BLANC = (255, 255, 255)
@@ -217,17 +217,20 @@ def show_options(screen, menu_surface, clock):
 
 def music_menu(music_file):
     pygame.mixer.music.load(music_file)
+    pygame.mixer.music.set_volume(1)
     pygame.mixer.music.play(-1)  # -1 pour une boucle infinie
 
 
 running = True
 clock = pygame.time.Clock()
+# Lance la musique du menu
+music_menu(menu_music)
 
-while running:
+
+while running: 
     clock.tick(60)  # Limite à 60 FPS
 
-    # Lance la musique du menu
-    music_menu(menu_music)
+
 
     # Met à jour la taille actuelle de la fenêtre et recentre les boutons
     win_w, win_h = fenetre.get_size()
