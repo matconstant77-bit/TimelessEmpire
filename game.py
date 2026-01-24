@@ -13,6 +13,10 @@ Ajout des variables à mettre ici
 #création d'une fenêtre
 fenetre=pygame.display.set_mode((1920,1080))#fenêtre de taille 1920*1080
 
+# Variable pour stocker l'état du jeu
+game_state = "menu"  # "menu" ou "game"
+carte = None  # La carte de jeu sera créée au démarrage d'une nouvelle partie
+
 
 
 #chargement des images
@@ -21,28 +25,42 @@ liste_actuelle=[]
 #images de fond (menus et maps)
 menu = pygame.image.load("menu.png").convert_alpha()
 menu = pygame.transform.scale(menu,(1920,1080))
-"""
+
 #tuiles de terrain
-plaine_tuile = pygame.image.load("")
 
-mountain_tuile = pygame.image.load("")
+try:
+    Eau_1 = pygame.transform.scale(pygame.image.load("Eau_1.png"),(32,42))
+    Eau_2 = pygame.transform.scale(pygame.image.load("Eau_2.png"),(32,42))
+    Eau_3 = pygame.transform.scale(pygame.image.load("Eau_3.png"),(32,42))
+    Herbe_1 = pygame.transform.scale(pygame.image.load("Herbe_1.png"),(32,42))
+    Herbe_2 = pygame.transform.scale(pygame.image.load("Herbe_2.png"),(32,42))
+    Herbe_3 = pygame.transform.scale(pygame.image.load("Herbe_3.png"),(32,42))
+    Pierre_1 = pygame.transform.scale(pygame.image.load("Pierre_1.png"),(32,42))
+    IMAGES_LOADED = True
+except Exception as e:
+    print(f"✗ Erreur lors du chargement des images: {e}")
+    # Créer des surfaces de couleur de remplacement
+    Eau_1 = pygame.Surface((32, 42))
+    Eau_1.fill(BLEU)
+    Eau_2 = Eau_1
+    Eau_3 = Eau_1
+    Herbe_1 = pygame.Surface((32, 42))
+    Herbe_1.fill(VERT)
+    Herbe_2 = Herbe_1
+    Herbe_3 = Herbe_1
+    Pierre_1 = pygame.Surface((32, 42))
+    Pierre_1.fill((128, 128, 128))
+    IMAGES_LOADED = False
 
-water_tuile = pygame.image.load("")
+# Dictionnaire des tuiles
+tuiles = {
+    'eau': Eau_1,
+    'herbe': Herbe_1,
+    'foret': Herbe_2,
+    'montagne': Pierre_1,
+}
 
-forest_tuile = pygame.image.load("")
 
-snow_plaine_tuile = pygame.image.load("")
-
-snow_forest_tuile = pygame.image.load("")
-
-snow_mountain_tuile = pygame.image.load("")
-
-ice_tuile = pygame.image.load("")
-
-desert_tuile = pygame.image.load("")
-
-desert_mountain_tuile = pygame.image.load("")
-"""
 #musique
 menu_music = "menu-musique.mp3"
 
@@ -66,22 +84,6 @@ except:
     FONT_TITLE = pygame.font.SysFont(None, 72)
     FONT_BUTTON = pygame.font.SysFont(None, 36)
 
-# Tuiles de terrain (à compléter avec les bons chemins d'accès aux images)
-"""
-tuiles = {
-    'mountain_grass': pygame.image.load(""),
-    'mountain_forest': pygame.image.load(""),
-    'mountain_snow': pygame.image.load(""),
-    'mountain_sand': pygame.image.load(""),
-    'plain_grass': pygame.image.load(""),
-    'plain_forest': pygame.image.load(""),
-    'plain_snow': pygame.image.load(""),
-    'desert': pygame.image.load(""),
-    'forest': pygame.image.load(""),
-    'snow_forest': pygame.image.load(""),
-    'water': pygame.image.load(""),
-}
-"""
 # création d'une classe Hexagone pour créer la map
 
 class Hexagone:
@@ -90,6 +92,56 @@ class Hexagone:
         self.r = r                           # Coordonnée r
         self.type_terrain = type_terrain     # 'herbe', 'foret', 'eau', etc.
         self.tuile = tuiles[type_terrain]   # L'image PNG associée
+    
+    def get_pixel_pos(self, size=32, vertical_spacing=42):
+        """Retourne la position en pixels de l'hexagone."""
+        # Layout hexagonal "odd-r" - lignes impaires décalées
+        # Espacement horizontal: 100% de la largeur
+        x = self.q * size * 1.0
+        # Décalage pour lignes impaires
+        if self.r % 2 == 1:
+            x += size * 0.5
+        # Espacement vertical: 1/2 de la hauteur
+        y = self.r * vertical_spacing * 0.5
+        return int(x), int(y)
+
+
+class Carte:
+    def __init__(self, largeur, hauteur):
+        """Crée une carte hexagonale avec des tuiles aléatoires."""
+        self.largeur = largeur
+        self.hauteur = hauteur
+        self.hexagones = []
+        self.generer_carte()
+    
+    def generer_carte(self):
+        """Génère la carte avec des hexagones aléatoires."""
+        import random
+        types_terrain = ['eau', 'herbe', 'foret', 'montagne']
+        
+        for r in range(self.hauteur):
+            for q in range(self.largeur):
+                type_terrain = random.choice(types_terrain)
+                hex_obj = Hexagone(q, r, type_terrain)
+                self.hexagones.append(hex_obj)
+    
+    def dessiner(self, surface, offset_x=0, offset_y=0):
+        """Dessine tous les hexagones sur la surface en ordre de profondeur correct."""
+        # Trier les hexagones: d'abord par y (position verticale), puis par x (position horizontale)
+        # Cela affiche de bas en haut, et pour une même hauteur, de gauche à droite
+        hexagones_tries = sorted(self.hexagones, key=lambda h: (h.get_pixel_pos()[1], h.get_pixel_pos()[0]))
+        
+        for hex_obj in hexagones_tries:
+            x, y = hex_obj.get_pixel_pos()
+            x += offset_x
+            y += offset_y
+            
+            # Vérifier que l'hexagone est dans les limites de la surface
+            if -50 < x < surface.get_width() + 50 and -50 < y < surface.get_height() + 50:
+                try:
+                    surface.blit(hex_obj.tuile, (x, y))
+                except Exception as e:
+                    print(f"Erreur affichage hex: {e}")
 
 # création d'une classe Button pour les boutons du menu
 
@@ -227,48 +279,74 @@ clock = pygame.time.Clock()
 music_menu(menu_music)
 
 
-while running: 
-    clock.tick(60)  # Limite à 60 FPS
-
-
-
     # Met à jour la taille actuelle de la fenêtre et recentre les boutons
+while running:
+    clock.tick(120)  # Limite à 120 FPS
+
+    # Mettre à jour les positions des boutons EN PREMIER
+
     win_w, win_h = fenetre.get_size()
     for btn in boutons_menu:
         btn.rect.center = (win_w // 2, btn.center_y)
-
-    # Affiche le fond du menu
-    fenetre.blit(menu, (0, 0))
-
-    # Récupère la position de la souris
-    mouse_pos = pygame.mouse.get_pos()
 
     # Gestion des événements
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            # Retour au menu avec Échap
+            game_state = "menu"
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            # Clic gauche : vérifier si un bouton est cliqué
-            for btn in boutons_menu:
-                if btn.rect.collidepoint(event.pos):
-                    if btn.action == "quit":
-                        running = False
-                    elif btn.action == "new_game":
-                        print("New game selected")
-                    elif btn.action == "options":
-                        # affiche le modal options (retourne éventuellement un nouvel écran/menu)
-                        fenetre, menu = show_options(fenetre, menu, clock)
+            if game_state == "menu":
+                # Clic gauche : vérifier si un bouton est cliqué
+                for btn in boutons_menu:
+                    if btn.rect.collidepoint(event.pos):
+                        if btn.action == "quit":
+                            running = False
+                        elif btn.action == "new_game":
+                            # Créer une nouvelle carte et passer en mode jeu
+                            # Calculé pour remplir 1920x1080 avec hexagones 32x42
+                            carte = Carte(60, 52)  # Carte plus grande pour remplir l'écran
+                            game_state = "game"
+                        elif btn.action == "options":
+                            # affiche le modal options (retourne éventuellement un nouvel écran/menu)
+                            fenetre, menu = show_options(fenetre, menu, clock)
 
-    # Titre
-    title = FONT_TITLE.render("Timeless Empire", True, BLANC)
-    shadow = FONT_TITLE.render("Timeless Empire", True, SHADOW)
-    center_x = fenetre.get_width() // 2
-    fenetre.blit(shadow, (center_x - title.get_width() // 2 + 3, 103))
-    fenetre.blit(title, (center_x - title.get_width() // 2, 100))
+    # Affichage selon l'état du jeu
+    if game_state == "menu":
+        # Affiche le menu
+        win_w, win_h = fenetre.get_size()
+        for btn in boutons_menu:
+            btn.rect.center = (win_w // 2, btn.center_y)
 
-    # Dessine les boutons
-    for btn in boutons_menu:
-        btn.draw(fenetre, mouse_pos)
+        # Affiche le fond du menu
+        fenetre.blit(menu, (0, 0))
+
+        # Récupère la position de la souris
+        mouse_pos = pygame.mouse.get_pos()
+
+        # Titre
+        title = FONT_TITLE.render("Timeless Empire", True, BLANC)
+        shadow = FONT_TITLE.render("Timeless Empire", True, SHADOW)
+        center_x = fenetre.get_width() // 2
+        fenetre.blit(shadow, (center_x - title.get_width() // 2 + 3, 103))
+        fenetre.blit(title, (center_x - title.get_width() // 2, 100))
+
+        # Dessine les boutons
+        for btn in boutons_menu:
+            btn.draw(fenetre, mouse_pos)
+
+    elif game_state == "game":
+        # Affiche la carte de jeu
+        fenetre.fill(NOIR)  # Remplir avec du noir
+        
+        if carte:
+            # Utiliser la méthode dessiner() pour afficher correctement avec tri
+            carte.dessiner(fenetre, offset_x=0, offset_y=0)
+        
+        # Afficher un texte pour indiquer comment retourner au menu
+        instruction = FONT_BUTTON.render("Appuyez sur ECHAP pour retourner au menu", True, BLANC)
+        fenetre.blit(instruction, (20, 20))
 
     # Met à jour l'affichage
     pygame.display.flip()
