@@ -6,6 +6,10 @@ import ressources
 import tours
 import player_select
 
+# Fichier principal: Gère menu, carte hex, ressources, et intégration multiplayer/tours
+# État jeu: "menu" / "game" / "multi_game"
+
+
 pygame.init() #démarrage de pygame
 pygame.mixer.init()
 
@@ -16,9 +20,11 @@ Ajout des variables à mettre ici
 #création d'une fenêtre
 fenetre=pygame.display.set_mode((1920,1080))#fenêtre de taille 1920*1080
 
-# Variable pour stocker l'état du jeu
-game_state = "menu"  # "menu" ou "game"
-carte = None  # La carte de jeu sera créée au démarrage d'une nouvelle partie
+# Variables globales jeu
+# game_state contrôle affichage/logique (menu / game / multi_game)
+game_state = "menu"
+carte = None  # Instance Carte hex (générée en new_game)
+
 
 
 
@@ -84,12 +90,13 @@ FONT_BUTTON = pygame.font.SysFont(None, 36)
 
 # création d'une classe Hexagone pour créer la map
 
+# Hexagone : Tuile carte hex (layout "odd-r")
 class Hexagone:
     def __init__(self, q, r, type_terrain):
-        self.q = q                           # Coordonnée q
-        self.r = r                           # Coordonnée r
-        self.type_terrain = type_terrain     # 'herbe', 'foret', 'eau', etc.
-        self.tuile = tuiles[type_terrain]   # L'image PNG associée
+        self.q = q                           # Coord q (cube coords)
+        self.r = r                           # Coord r
+        self.type_terrain = type_terrain     # Type ('herbe', 'eau'...)
+        self.tuile = tuiles[type_terrain]   # Image associée
     
     def get_pixel_pos(self, size=32, vertical_spacing=42):
         """Retourne la position en pixels de l'hexagone."""
@@ -141,17 +148,15 @@ class Carte:
                 except Exception as e:
                     print(f"Erreur affichage hex: {e}")
 
-# création d'une classe Button pour les boutons du menu
-
+# Classe Button : Boutons interactifs (hover, shadow, click)
 class Button:
     def __init__(self,text,center_y,action):
         self.text = text
         self.center_y = center_y
-        self.action = action
+        self.action = action  # Action déclenchée au clic ("new_game", "multiplayer"...)
         self.widtht, self.height = 320, 70
         self.rect = pygame.Rect((0,0,self.widtht,self.height))
-        # la position centrale sera calculée dynamiquement selon la taille de la fenêtre
-        self.rect.center = (0,self.center_y)
+        self.rect.center = (0,self.center_y)  # Center Y fixe, X dynamique
     
     def draw(self,win,mouse_pos):
         # s'assurer que le bouton est centré sur la largeur actuelle de la fenêtre
@@ -287,76 +292,59 @@ while running:
     for btn in boutons_menu:
         btn.rect.center = (win_w // 2, btn.center_y)
 
-    # Gestion des événements
+# Boucle principale : Événements (clics, touches), update, render (120 FPS)
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                # Retour au menu avec Échap
-                game_state = "menu"
-            elif event.key == pygame.K_t and 'player_resources' in locals():
+                game_state = "menu"  # Retour menu
+            elif event.key == pygame.K_t and game_state == "game" and 'player_resources' in locals():
+                # Simule fin tour : +ressources (lien tours.py futur)
                 player_resources.add_resource('wood', 10)
                 player_resources.add_resource('food', 10)
                 player_resources.add_resource('gold', 5)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mouse_pos = event.pos
             if game_state == "menu":
-                # Clic gauche : vérifier si un bouton est cliqué
                 for btn in boutons_menu:
                     if btn.is_clicked(mouse_pos, (1,0,0)):
                         if btn.action == "quit":
                             running = False
                         elif btn.action == "new_game":
-                            # Créer une nouvelle carte et passer en mode jeu
-                            # Calculé pour remplir 1920x1080 avec hexagones 32x42
-                            carte = Carte(60, 52)  # Carte plus grande pour remplir l'écran
+                            carte = Carte(60, 52)  # Génération carte (60x52 tuiles)
                             game_state = "game"
                             player_resources = ressources.PlayerResources(wood=50, food=50, gold=20, money=0)
                         elif btn.action == "multiplayer":
                             turn_manager, players = player_select.select_players(fenetre, clock)
                             if turn_manager:
                                 game_state = "multi_game"
-                                player_resources = ressources.PlayerResources()  # Lié à players[0]
-                                print(f"Multiplayer with {len(players)} players")
+                                player_resources = ressources.PlayerResources(wood=50, food=50, gold=20, money=0)  # Player 1
+                                print(f"Multiplayer: {len(players)} joueurs, TurnManager prêt")
                         elif btn.action == "options":
-                            # affiche le modal options (retourne éventuellement un nouvel écran/menu)
-                            fenetre, menu = show_options(fenetre, menu, clock)
+                            fenetre, menu = show_options(fenetre, menu, clock)  # Resize fenêtre
 
-    # Affichage selon l'état du jeu
+    # Render selon game_state
     mouse_pos = pygame.mouse.get_pos()
     if game_state == "menu":
-        # Affiche le menu
+        # Menu principal + boutons hover
         win_w, win_h = fenetre.get_size()
-        for btn in boutons_menu:
-            btn.rect.center = (win_w // 2, btn.center_y)
-
-        # Affiche le fond du menu
-        fenetre.blit(menu, (0, 0))
-
-        # Titre
+        fenetre.blit(menu, (0, 0))  # Fond menu
         title = FONT_TITLE.render("Timeless Empire", True, BLANC)
         shadow = FONT_TITLE.render("Timeless Empire", True, SHADOW)
         center_x = fenetre.get_width() // 2
         fenetre.blit(shadow, (center_x - title.get_width() // 2 + 3, 103))
-        fenetre.blit(title, (center_x - title.get_width() // 2, 100))
-
-        # Dessine les boutons
+        fenetre.blit(title, (center_x - title.get_width() // 2, 100))  # Titre shadow+texte
         for btn in boutons_menu:
-            btn.draw(fenetre, mouse_pos)
+            btn.rect.center = (win_w // 2, btn.center_y)
+            btn.draw(fenetre, mouse_pos)  # Boutons avec hover
 
-    elif game_state == "game":
-        # Affiche la carte de jeu
-        fenetre.fill(NOIR)  # Remplir avec du noir
-        
+    elif game_state in ["game", "multi_game"]:
+        fenetre.fill(NOIR)
         if carte:
-            # Utiliser la méthode dessiner() pour afficher correctement avec tri
-            carte.dessiner(fenetre, offset_x=0, offset_y=0)
-        
-        ressources.draw_resources_overlay(fenetre, player_resources)
-        
-        # Afficher un texte pour indiquer comment retourner au menu
-        instruction = FONT_BUTTON.render("Appuyez sur ECHAP pour retourner au menu, T pour fin de tour", True, BLANC)
+            carte.dessiner(fenetre)  # Carte triée profondeur
+        ressources.draw_resources_overlay(fenetre, player_resources)  # Overlay ressources
+        instruction = FONT_BUTTON.render("Échap: Menu | T: Ressources", True, BLANC)
         fenetre.blit(instruction, (20, 20))
 
     # Met à jour l'affichage
