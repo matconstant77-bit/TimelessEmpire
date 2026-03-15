@@ -2,6 +2,9 @@ import pygame #importation de pygame
 import sys
 import subprocess
 from pygame.locals import *
+import ressources
+import tours
+import player_select
 
 pygame.init() #démarrage de pygame
 pygame.mixer.init()
@@ -73,16 +76,11 @@ BLEU = (0, 0, 255)
 JAUNE = (255, 255, 0)
 TRANSLUCENT_BLUE = (0, 80, 255, 100)
 HOVER_BLUE = (0, 140, 255, 220)
-SHADOW = (0, 0, 0,)
+SHADOW = (0, 0, 0)
 
 #polices
-try:
-    FONT_TITLE = pygame.font.Font("Pixeled.ttf", 72)
-    FONT_BUTTON = pygame.font.Font("Pixeled.ttf", 36)
-
-except:
-    FONT_TITLE = pygame.font.SysFont(None, 72)
-    FONT_BUTTON = pygame.font.SysFont(None, 36)
+FONT_TITLE = pygame.font.SysFont(None, 72)
+FONT_BUTTON = pygame.font.SysFont(None, 36)
 
 # création d'une classe Hexagone pour créer la map
 
@@ -178,8 +176,9 @@ class Button:
 
 boutons_menu = [
     Button("New Game", 400, "new_game"),
-    Button("Options", 500, "options"),
-    Button("Quit", 600, "quit"),
+    Button("Multiplayer", 480, "multiplayer"),
+    Button("Options", 560, "options"),
+    Button("Quit", 640, "quit"),
 ]
 
 
@@ -278,8 +277,7 @@ clock = pygame.time.Clock()
 # Lance la musique du menu
 music_menu(menu_music)
 
-
-    # Met à jour la taille actuelle de la fenêtre et recentre les boutons
+# Met à jour la taille actuelle de la fenêtre et recentre les boutons
 while running:
     clock.tick(120)  # Limite à 120 FPS
 
@@ -293,14 +291,20 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            # Retour au menu avec Échap
-            game_state = "menu"
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                # Retour au menu avec Échap
+                game_state = "menu"
+            elif event.key == pygame.K_t and 'player_resources' in locals():
+                player_resources.add_resource('wood', 10)
+                player_resources.add_resource('food', 10)
+                player_resources.add_resource('gold', 5)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mouse_pos = event.pos
             if game_state == "menu":
                 # Clic gauche : vérifier si un bouton est cliqué
                 for btn in boutons_menu:
-                    if btn.rect.collidepoint(event.pos):
+                    if btn.is_clicked(mouse_pos, (1,0,0)):
                         if btn.action == "quit":
                             running = False
                         elif btn.action == "new_game":
@@ -308,11 +312,19 @@ while running:
                             # Calculé pour remplir 1920x1080 avec hexagones 32x42
                             carte = Carte(60, 52)  # Carte plus grande pour remplir l'écran
                             game_state = "game"
+                            player_resources = ressources.PlayerResources(wood=50, food=50, gold=20, money=0)
+                        elif btn.action == "multiplayer":
+                            turn_manager, players = player_select.select_players(fenetre, clock)
+                            if turn_manager:
+                                game_state = "multi_game"
+                                player_resources = ressources.PlayerResources()  # Lié à players[0]
+                                print(f"Multiplayer with {len(players)} players")
                         elif btn.action == "options":
                             # affiche le modal options (retourne éventuellement un nouvel écran/menu)
                             fenetre, menu = show_options(fenetre, menu, clock)
 
     # Affichage selon l'état du jeu
+    mouse_pos = pygame.mouse.get_pos()
     if game_state == "menu":
         # Affiche le menu
         win_w, win_h = fenetre.get_size()
@@ -321,9 +333,6 @@ while running:
 
         # Affiche le fond du menu
         fenetre.blit(menu, (0, 0))
-
-        # Récupère la position de la souris
-        mouse_pos = pygame.mouse.get_pos()
 
         # Titre
         title = FONT_TITLE.render("Timeless Empire", True, BLANC)
@@ -344,8 +353,10 @@ while running:
             # Utiliser la méthode dessiner() pour afficher correctement avec tri
             carte.dessiner(fenetre, offset_x=0, offset_y=0)
         
+        ressources.draw_resources_overlay(fenetre, player_resources)
+        
         # Afficher un texte pour indiquer comment retourner au menu
-        instruction = FONT_BUTTON.render("Appuyez sur ECHAP pour retourner au menu", True, BLANC)
+        instruction = FONT_BUTTON.render("Appuyez sur ECHAP pour retourner au menu, T pour fin de tour", True, BLANC)
         fenetre.blit(instruction, (20, 20))
 
     # Met à jour l'affichage
