@@ -1,6 +1,10 @@
 import pygame
+import sys
 from tours import Player, TurnManager
-from game import FONT_BUTTON, FONT_TITLE, SHADOW  # Reuse fonts/colors from game.py
+
+BLANC = (255, 255, 255)
+SHADOW = (0, 0, 0)
+HOVER_BLUE = (0, 140, 255)
 
 # Menu sélection nombre joueurs (1-4), crée TurnManager/Players
 def select_players(fenetre, clock):
@@ -8,9 +12,10 @@ def select_players(fenetre, clock):
     selected_players = 1
     players = []
     
-    # Fonts réutilisées du game.py pour cohérence
-    title_font = FONT_TITLE if 'FONT_TITLE' in globals() else pygame.font.SysFont(None, 72)
-    button_font = FONT_BUTTON if 'FONT_BUTTON' in globals() else pygame.font.SysFont(None, 36)
+    title_font = pygame.font.SysFont(None, 72)
+    button_font = pygame.font.SysFont(None, 36)
+    small_font = pygame.font.SysFont(None, 48)
+    font = pygame.font.SysFont(None, 64)
     
     while running:
         # Fond sombre menu
@@ -75,11 +80,8 @@ def select_players(fenetre, clock):
                     # Init tours.py : Crée players + TurnManager
                     players = [Player(f"Joueur {i+1}") for i in range(selected_players)]
                     turn_manager = TurnManager(players)
-                    print(f"Tours init: {len(players)} joueurs, période 1")
                     running = False
     
-    return turn_manager, players
-        
     return turn_manager, players
 
 # Exemple d'utilisation (à intégrer dans game.py)
