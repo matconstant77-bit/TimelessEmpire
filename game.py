@@ -2,6 +2,7 @@ import sys
 import subprocess
 import os
 import warnings
+import random
 from io import StringIO
 
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
@@ -80,6 +81,13 @@ tuiles = {
     'herbe': Herbe_1,
     'foret': Herbe_2,
     'montagne': Pierre_1,
+}
+
+terrain_variantes = {
+    'eau': [Eau_1, Eau_2, Eau_3],
+    'herbe': [Herbe_1],
+    'foret': [Herbe_2, Herbe_3],
+    'montagne': [Pierre_1],
 }
 
 
@@ -263,11 +271,13 @@ option_button_images = load_option_button_images("Boutons_menu.png")
 
 # Hexagone : Tuile carte hex (layout "odd-r")
 class Hexagone:
-    def __init__(self, q, r, type_terrain):
+    def __init__(self, q, r, type_terrain, tuile_surface=None):
         self.q = q                           # Coord q (cube coords)
         self.r = r                           # Coord r
         self.type_terrain = type_terrain     # Type ('herbe', 'eau'...)
-        self.tuile = tuiles[type_terrain]   # Image associée
+        self.tuile = tuile_surface if tuile_surface is not None else tuiles[type_terrain]   # Image associée
+        self.selection_lift = 0.0           # Animation visuelle de sélection
+        self.target_lift = 0.0              # Cible d'animation (0.0 ou 1.0)
     
     def get_pixel_pos(self, size=32, vertical_spacing=42):
         """Retourne la position en pixels de l'hexagone."""
@@ -288,22 +298,115 @@ class Carte:
         self.largeur = largeur
         self.hauteur = hauteur
         self.hexagones = []
+        self.selected_hex = None
         self._mask_cache = {}
         self.generer_carte()
+
+    def update_selection_animation(self):
+        """Anime en douceur le relèvement des hexagones sélectionnés."""
+        for hex_obj in self.hexagones:
+            delta = hex_obj.target_lift - hex_obj.selection_lift
+            if abs(delta) < 0.01:
+                hex_obj.selection_lift = hex_obj.target_lift
+            else:
+                hex_obj.selection_lift += delta * 0.22
+
+    def select_hex(self, hex_obj):
+        """Sélectionne un hexagone et déclenche son animation de relèvement."""
+        if self.selected_hex is not None and self.selected_hex is not hex_obj:
+            self.selected_hex.target_lift = 0.0
+
+        if hex_obj is None:
+            self.selected_hex = None
+            return
+
+        self.selected_hex = hex_obj
+        self.selected_hex.target_lift = 1.0
     
     def generer_carte(self):
-        """Génère la carte avec des hexagones aléatoires."""
-        import random
-        types_terrain = ['eau', 'herbe', 'foret', 'montagne']
-        
+        """Génère une carte en grands amas organiques avec moins d'eau."""
+        self.hexagones.clear()
+
+        # Poids de base (proportion de chaque terrain dans le pool de germes)
+        terrain_pool = ['herbe'] * 45 + ['foret'] * 28 + ['montagne'] * 18 + ['eau'] * 9
+
+        # --- Étape 1: Germes Voronoi répartis aléatoirement ---
+        # ~1 germe pour 85 cases → amas de taille ~85 cases chacun
+        n_seeds = max(28, (self.largeur * self.hauteur) // 10)
+        seeds = [
+            (random.randint(0, self.largeur - 1),
+             random.randint(0, self.hauteur - 1),
+             random.choice(terrain_pool))
+            for _ in range(n_seeds)
+        ]
+
+        # --- Étape 2: Attribution Voronoi avec bruit gaussien sur la distance ---
+        # Le bruit rend les frontières irrégulières et organiques (pas des droites)
+        noise_scale = (self.largeur + self.hauteur) / 28.0
+        terrain_grid = {}
         for r in range(self.hauteur):
             for q in range(self.largeur):
-                type_terrain = random.choice(types_terrain)
-                hex_obj = Hexagone(q, r, type_terrain)
-                self.hexagones.append(hex_obj)
+                best_type = 'herbe'
+                min_dist = float('inf')
+                for sq, sr, st in seeds:
+                    d = ((q - sq) ** 2 + (r - sr) ** 2) ** 0.5
+                    d += random.gauss(0, noise_scale)
+                    if d < min_dist:
+                        min_dist = d
+                        best_type = st
+                terrain_grid[(q, r)] = best_type
+
+        # --- Étape 3: Lissage cellulaire (2 passes) ---
+        # Élimine les cellules seules et adoucit les transitions trop abruptes.
+        # Seulement si 5 voisins sur 6 sont d'un même type → conversion douce.
+        for _ in range(2):
+            new_grid = {}
+            for r in range(self.hauteur):
+                for q in range(self.largeur):
+                    neighbors = self._get_existing_neighbors(q, r, terrain_grid)
+                    if len(neighbors) < 2:
+                        new_grid[(q, r)] = terrain_grid[(q, r)]
+                        continue
+                    counts = {}
+                    for t in neighbors:
+                        counts[t] = counts.get(t, 0) + 1
+                    majority = max(counts, key=counts.get)
+                    if counts[majority] >= 5:
+                        new_grid[(q, r)] = majority
+                    else:
+                        new_grid[(q, r)] = terrain_grid[(q, r)]
+            terrain_grid = new_grid
+
+        # --- Étape 4: Création des hexagones avec variantes visuelles ---
+        for r in range(self.hauteur):
+            for q in range(self.largeur):
+                type_terrain = terrain_grid[(q, r)]
+                tuile_surface = self._choose_tile_surface(type_terrain)
+                self.hexagones.append(Hexagone(q, r, type_terrain, tuile_surface=tuile_surface))
+
+    def _choose_tile_surface(self, type_terrain):
+        """Choisit une variante visuelle d'une famille de terrain."""
+        variantes = terrain_variantes.get(type_terrain, [tuiles[type_terrain]])
+        return random.choice(variantes)
+
+    def _get_existing_neighbors(self, q, r, terrain_grid):
+        """Retourne les types des voisins déjà générés (layout odd-r)."""
+        if r % 2 == 0:
+            offsets = [(-1, 0), (1, 0), (0, -1), (-1, -1), (0, 1), (-1, 1)]
+        else:
+            offsets = [(-1, 0), (1, 0), (1, -1), (0, -1), (1, 1), (0, 1)]
+
+        found = []
+        for dq, dr in offsets:
+            nq, nr = q + dq, r + dr
+            if (nq, nr) in terrain_grid:
+                found.append(terrain_grid[(nq, nr)])
+        return found
     
     def dessiner(self, surface, offset_x=0, offset_y=0):
         """Dessine tous les hexagones sur la surface en ordre de profondeur correct."""
+        self.update_selection_animation()
+
         # Trier les hexagones: d'abord par y (position verticale), puis par x (position horizontale)
         # Cela affiche de bas en haut, et pour une même hauteur, de gauche à droite
         hexagones_tries = sorted(self.hexagones, key=lambda h: (h.get_pixel_pos()[1], h.get_pixel_pos()[0]))
@@ -312,6 +415,7 @@ class Carte:
             x, y = hex_obj.get_pixel_pos()
             x += offset_x
             y += offset_y
+            y -= int(hex_obj.selection_lift * 10)
             
             # Vérifier que l'hexagone est dans les limites de la surface
             if -50 < x < surface.get_width() + 50 and -50 < y < surface.get_height() + 50:
@@ -335,6 +439,7 @@ class Carte:
             x, y = hex_obj.get_pixel_pos()
             x += offset_x
             y += offset_y
+            y -= int(hex_obj.selection_lift * 10)
             tile = hex_obj.tuile
             rect = pygame.Rect(x, y, tile.get_width(), tile.get_height())
             if not rect.collidepoint(px, py):
@@ -353,6 +458,7 @@ class Carte:
         x, y = hex_obj.get_pixel_pos()
         x += offset_x
         y += offset_y
+        y -= int(hex_obj.selection_lift * 10)
         tile = hex_obj.tuile
         mask = self._get_mask_for_tile(tile)
 
@@ -529,7 +635,7 @@ def music_menu(music_file):
         if not os.path.exists(music_file):
             return
         pygame.mixer.music.load(music_file)
-        pygame.mixer.music.set_volume(0)
+        pygame.mixer.music.set_volume(0.1)
         pygame.mixer.music.play(-1)  # -1 pour une boucle infinie
     except pygame.error:
         pass
@@ -537,6 +643,9 @@ def music_menu(music_file):
 
 running = True
 clock = pygame.time.Clock()
+FONT_TIMER = pygame.font.SysFont("consolas", 34, bold=True)
+GAME_DURATION_MS = 40 * 60 * 1000  # 40 minutes en ms
+game_timer_start = None  # Temps pygame au démarrage de la partie
 # Lance la musique du menu
 music_menu(menu_music)
 
@@ -572,14 +681,19 @@ while running:
                         elif btn.action == "new_game":
                             carte = Carte(60, 52)  # Génération carte (60x52 tuiles)
                             game_state = "game"
+                            game_timer_start = pygame.time.get_ticks()
                             player_resources = ressources.PlayerResources(wood=50, food=50, gold=20, money=0)
                         elif btn.action == "multiplayer":
                             turn_manager, players = player_select.select_players(fenetre, clock)
                             if turn_manager:
                                 game_state = "multi_game"
+                                game_timer_start = pygame.time.get_ticks()
                                 player_resources = ressources.PlayerResources(wood=50, food=50, gold=20, money=0)  # Player 1
                         elif btn.action == "options":
                             fenetre, menu = show_options(fenetre, menu, clock)  # Resize fenêtre
+            elif game_state in ["game", "multi_game"] and carte:
+                clicked_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1])
+                carte.select_hex(clicked_hex)
 
     # Render selon game_state
     mouse_pos = pygame.mouse.get_pos()
@@ -600,6 +714,25 @@ while running:
         ressources.draw_resources_overlay(fenetre, player_resources)  # Overlay ressources
         instruction = FONT_BUTTON.render("Échap: Menu | T: Ressources", True, BLANC)
         fenetre.blit(instruction, (20, 20))
+        # --- Timer central ---
+        if game_timer_start is not None:
+            elapsed = pygame.time.get_ticks() - game_timer_start
+            remaining = max(0, GAME_DURATION_MS - elapsed)
+            mins = remaining // 60000
+            secs = (remaining % 60000) // 1000
+            timer_text = f"{mins:02d}:{secs:02d}"
+            timer_surf = FONT_TIMER.render(timer_text, False, BLANC)
+            tw, th = timer_surf.get_size()
+            pad_x, pad_y = 8, 2
+            box_w, box_h = tw + pad_x * 2, th + pad_y * 2
+            win_w, win_h = fenetre.get_size()
+            box_x = (win_w - box_w) // 2
+            box_y = 0
+            box_surf = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+            pygame.draw.rect(box_surf, (0, 0, 0, 180), (0, 0, box_w, box_h))
+            pygame.draw.rect(box_surf, (200, 200, 200, 200), (0, 0, box_w, box_h), width=1)
+            fenetre.blit(box_surf, (box_x, box_y))
+            fenetre.blit(timer_surf, (box_x + pad_x, box_y + pad_y))
 
     # Met à jour l'affichage
     pygame.display.flip()
