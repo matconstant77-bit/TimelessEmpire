@@ -1,22 +1,31 @@
-import pygame #importation de pygame
 import sys
 import subprocess
+import os
+import warnings
+from io import StringIO
+
+
+# Rediriger stdout et stderr pour supprimer les messages de pygame
+old_stdout = sys.stdout
+old_stderr = sys.stderr
+sys.stdout = StringIO()
+sys.stderr = StringIO()
+
+import pygame #importation de pygame
 from pygame.locals import *
 
 pygame.init() #démarrage de pygame
 pygame.mixer.init()
 
-"""
-Ajout des variables à mettre ici
+sys.stdout = old_stdout
+sys.stderr = old_stderr
 
-"""
 #création d'une fenêtre
 fenetre=pygame.display.set_mode((1920,1080))#fenêtre de taille 1920*1080
 
 # Variable pour stocker l'état du jeu
 game_state = "menu"  # "menu" ou "game"
-carte = None  # La carte de jeu sera créée au démarrage d'une nouvelle partie
-
+carte = None  
 
 
 #chargement des images
@@ -38,7 +47,6 @@ try:
     Pierre_1 = pygame.transform.scale(pygame.image.load("Pierre_1.png"),(32,42))
     IMAGES_LOADED = True
 except Exception as e:
-    print(f"✗ Erreur lors du chargement des images: {e}")
     # Créer des surfaces de couleur de remplacement
     Eau_1 = pygame.Surface((32, 42))
     Eau_1.fill(BLEU)
@@ -141,7 +149,7 @@ class Carte:
                 try:
                     surface.blit(hex_obj.tuile, (x, y))
                 except Exception as e:
-                    print(f"Erreur affichage hex: {e}")
+                    pass
 
 # création d'une classe Button pour les boutons du menu
 
