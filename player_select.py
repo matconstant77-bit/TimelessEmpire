@@ -6,6 +6,77 @@ BLANC = (255, 255, 255)
 SHADOW = (0, 0, 0)
 HOVER_BLUE = (0, 140, 255)
 
+
+def show_lobby(fenetre, clock, players):
+    """Affiche un salon d'attente local avant de lancer la partie multi."""
+    title_font = pygame.font.SysFont(None, 72)
+    text_font = pygame.font.SysFont(None, 40)
+    small_font = pygame.font.SysFont(None, 32)
+
+    while True:
+        fenetre.fill((18, 24, 44))
+        w, h = fenetre.get_size()
+
+        title = title_font.render("Salon d'attente", True, BLANC)
+        title_rect = title.get_rect(center=(w // 2, 90))
+        fenetre.blit(title, title_rect)
+
+        panel_rect = pygame.Rect(w // 2 - 360, 150, 720, 340)
+        pygame.draw.rect(fenetre, (12, 16, 30), panel_rect)
+        pygame.draw.rect(fenetre, (120, 160, 255), panel_rect, width=2)
+
+        subtitle = small_font.render("Joueurs en attente:", True, BLANC)
+        fenetre.blit(subtitle, (panel_rect.x + 20, panel_rect.y + 16))
+
+        for idx, player in enumerate(players):
+            line_y = panel_rect.y + 60 + idx * 58
+            line_rect = pygame.Rect(panel_rect.x + 20, line_y, panel_rect.width - 40, 46)
+            pygame.draw.rect(fenetre, (26, 34, 60), line_rect)
+            pygame.draw.rect(fenetre, (78, 112, 190), line_rect, width=1)
+
+            name_text = text_font.render(player.name, True, BLANC)
+            fenetre.blit(name_text, (line_rect.x + 14, line_rect.y + 8))
+
+            status_text = small_font.render("Connecte", True, (130, 255, 130))
+            status_rect = status_text.get_rect(midright=(line_rect.right - 12, line_rect.centery))
+            fenetre.blit(status_text, status_rect)
+
+        launch_rect = pygame.Rect(w // 2 - 180, h - 140, 360, 70)
+        back_rect = pygame.Rect(24, h - 90, 180, 52)
+
+        launch_hover = launch_rect.collidepoint(pygame.mouse.get_pos())
+        back_hover = back_rect.collidepoint(pygame.mouse.get_pos())
+
+        pygame.draw.rect(fenetre, HOVER_BLUE if launch_hover else (0, 170, 70), launch_rect)
+        pygame.draw.rect(fenetre, HOVER_BLUE if back_hover else (100, 100, 130), back_rect)
+
+        launch_text = text_font.render("Lancer la partie", True, BLANC)
+        launch_text_rect = launch_text.get_rect(center=launch_rect.center)
+        fenetre.blit(launch_text, launch_text_rect)
+
+        back_text = small_font.render("Retour", True, BLANC)
+        back_text_rect = back_text.get_rect(center=back_rect.center)
+        fenetre.blit(back_text, back_text_rect)
+
+        tip = small_font.render("Tous les joueurs sont en salle. Cliquez pour commencer.", True, (190, 210, 255))
+        tip_rect = tip.get_rect(center=(w // 2, h - 30))
+        fenetre.blit(tip, tip_rect)
+
+        pygame.display.flip()
+        clock.tick(60)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                return False
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if launch_rect.collidepoint(event.pos):
+                    return True
+                if back_rect.collidepoint(event.pos):
+                    return False
+
 # Menu sélection nombre joueurs (1-4), crée TurnManager/Players
 def select_players(fenetre, clock):
     running = True
@@ -77,10 +148,11 @@ def select_players(fenetre, clock):
                 elif plus_rect.collidepoint(mouse_pos) and selected_players < 4:
                     selected_players += 1
                 elif start_rect.collidepoint(mouse_pos):
-                    # Init tours.py : Crée players + TurnManager
+                    # Crée les joueurs puis passe par le salon d'attente.
                     players = [Player(f"Joueur {i+1}") for i in range(selected_players)]
-                    turn_manager = TurnManager(players)
-                    running = False
+                    if show_lobby(fenetre, clock, players):
+                        turn_manager = TurnManager(players)
+                        running = False
     
     return turn_manager, players
 
