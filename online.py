@@ -4,7 +4,7 @@ import pickle
 import os
 
 HOST = "0.0.0.0"
-PORT = int(os.environ.get("PORT", 5555))
+PORT = int(os.environ.get("PORT", 8000))
 
 MAX_PLAYERS = 4
 
