@@ -29,16 +29,24 @@ class PlayerResources:
   
 
 def draw_resources_overlay(screen, player_resources):
-    import pygame
-    font = pygame.font.SysFont('Arial', 18)
-    resources = player_resources.get_resources()
+    """Handle PlayerResources obj or dict (tours.Player.resources)."""
+    if hasattr(player_resources, 'get_resources'):
+        resources = player_resources.get_resources()
+    else:
+        resources = player_resources  # dict from tours.Player.resources
     lines = [
-        f"Gold: {resources['gold']}",
-        f"Money: {resources['money']}",
-        f"Food: {resources['food']}",
-        f"Wood: {resources['wood']}"
+        f"Gold: {resources.get('gold', 0)}",
+        f"Money: {resources.get('money', 0)}",
+        f"Food: {resources.get('food', 0)}",
+        f"Wood: {resources.get('wood', 0)}"
     ]
-    x, y = 10, 10
+    font = pygame.font.SysFont('Arial', 24)
+    # Top-right positioning
+    win_w, win_h = screen.get_size()
+    x = win_w - 200  # 200px margin from right
+    y = 10
     for i, line in enumerate(lines):
-        text_surface = font.render(line, True, (255, 255, 255))
-        screen.blit(text_surface, (x, y + i * 22))
+        shadow = font.render(line, True, (0, 0, 0))
+        text = font.render(line, True, (255, 255, 255))
+        screen.blit(shadow, (x + 4, y + i * 28 + 4))
+        screen.blit(text, (x, y + i * 28))

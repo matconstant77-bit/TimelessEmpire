@@ -40,7 +40,9 @@ fenetre = pygame.display.set_mode((start_w, start_h), pygame.RESIZABLE)
 # Variables globales jeu
 # game_state contrôle affichage/logique (menu / game / multi_game)
 game_state = "menu"
-carte = None  # Instance Carte hex (générée en new_game)
+carte = None  # Instance Carte hex
+turn_manager = None
+current_player_resources = None  # dict or PlayerResources
 
 #chargement des images
 liste_actuelle=[]
@@ -557,11 +559,11 @@ while running:
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 game_state = "menu"  # Retour menu
-            elif event.key == pygame.K_t and game_state == "game" and 'player_resources' in locals():
-                # Simule fin tour : +ressources (lien tours.py futur)
-                player_resources.add_resource('wood', 10)
-                player_resources.add_resource('food', 10)
-                player_resources.add_resource('gold', 5)
+            elif event.key == pygame.K_t and game_state == "game":
+                if current_player_resources and hasattr(current_player_resources, 'add_resource'):
+                    current_player_resources.add_resource('wood', 10)
+                    current_player_resources.add_resource('food', 10)
+                    current_player_resources.add_resource('gold', 5)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mouse_pos = event.pos
             if game_state == "menu":
@@ -570,16 +572,19 @@ while running:
                         if btn.action == "quit":
                             running = False
                         elif btn.action == "new_game":
-                            carte = Carte(60, 52)  # Génération carte (60x52 tuiles)
+                            carte = Carte(60, 52)
                             game_state = "game"
-                            player_resources = ressources.PlayerResources(wood=50, food=50, gold=20, money=0)
+                            current_player_resources = ressources.PlayerResources(wood=50, food=50, gold=20, money=0)
                         elif btn.action == "multiplayer":
                             turn_manager, players = player_select.select_players(fenetre, clock)
                             if turn_manager:
                                 game_state = "multi_game"
-                                player_resources = ressources.PlayerResources(wood=50, food=50, gold=20, money=0)  # Player 1
+                                current_player_resources = turn_manager.current_player().resources
                         elif btn.action == "options":
                             fenetre, menu = show_options(fenetre, menu, clock)  # Resize fenêtre
+            elif game_state == "multi_game" and 'end_turn_rect' in locals() and end_turn_rect.collidepoint(mouse_pos):
+                if turn_manager:
+                    turn_manager.player_finished(turn_manager.current_player())
 
     # Render selon game_state
     mouse_pos = pygame.mouse.get_pos()
@@ -591,15 +596,32 @@ while running:
         for btn in boutons_menu:
             btn.draw(fenetre, mouse_pos)
 
-    elif game_state in ["game", "multi_game"]:
+    elif game_state == "game":
         fenetre.fill(NOIR)
         if carte:
-            carte.dessiner(fenetre)  # Carte triée profondeur
+            carte.dessiner(fenetre)
             hovered_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1])
             carte.draw_hex_highlight(fenetre, hovered_hex)
-        ressources.draw_resources_overlay(fenetre, player_resources)  # Overlay ressources
-        instruction = FONT_BUTTON.render("Échap: Menu | T: Ressources", True, BLANC)
+        ressources.draw_resources_overlay(fenetre, current_player_resources)
+        instruction = FONT_BUTTON.render("Échap: Menu | T: +Ressources", True, BLANC)
         fenetre.blit(instruction, (20, 20))
+    elif game_state == "multi_game":
+        fenetre.fill(NOIR)
+        if carte:
+            carte.dessiner(fenetre)
+            hovered_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1])
+            carte.draw_hex_highlight(fenetre, hovered_hex)
+        ressources.draw_resources_overlay(fenetre, current_player_resources)
+        # Turn indicator
+        if turn_manager:
+            turn_text = FONT_BUTTON.render(f"Tour de {turn_manager.current_player().name} (Tour {turn_manager.turn_number + 1}, Période {turn_manager.period})", True, BLANC)
+            fenetre.blit(turn_text, (20, 60))
+        instruction = FONT_BUTTON.render("Échap: Menu | Cliquez End Turn", True, BLANC)
+        fenetre.blit(instruction, (20, 20))
+        # End Turn button
+        end_turn_btn = Button("End Turn", win_h - 100, "end_turn")
+        end_turn_btn.draw(fenetre, mouse_pos)
+        end_turn_rect = end_turn_btn.rect
 
     # Met à jour l'affichage
     pygame.display.flip()
