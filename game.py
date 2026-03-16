@@ -48,7 +48,7 @@ current_player_resources = None  # dict or PlayerResources
 liste_actuelle=[]
 
 #images de fond (menus et maps)
-menu = pygame.image.load("menu.png").convert_alpha()
+menu = pygame.image.load("background.png").convert_alpha()
 menu = pygame.transform.scale(menu,(1920,1080))
 
 #tuiles de terrain
