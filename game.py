@@ -637,7 +637,7 @@ def music_menu(music_file):
         if not os.path.exists(music_file):
             return
         pygame.mixer.music.load(music_file)
-        pygame.mixer.music.set_volume(0.05)
+        pygame.mixer.music.set_volume(0.2)
         pygame.mixer.music.play(-1)  # -1 pour une boucle infinie
     except pygame.error:
         pass
