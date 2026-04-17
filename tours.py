@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Set
 # ==============================
 
 TURNS_PER_PERIOD = 5
+TURN_DURATION_MS = 2 * 60 * 1000
 
 BASE_RESOURCE_INCOME = {
     "wood": 5,
@@ -24,6 +25,12 @@ BUILDINGS_BY_PERIOD = {
     1: ["farm"],
     2: ["barracks"],
     3: ["blacksmith"]
+}
+
+BUILDING_INCOME = {
+    "farm": {"food": 3},
+    "barracks": {"gold": 1},
+    "blacksmith": {"wood": 2},
 }
 
 # ==============================
@@ -64,11 +71,38 @@ class Player:
         self.resources = {
             "wood": 0,
             "food": 0,
-            "gold": 0
+            "gold": 0,
+            "money": 0
         }
 
         self.buildings: List[str] = []
         self.trapped_buildings: Set[int] = set()
+        self.color = None
+        self.home_hex = None
+
+    def add_resource(self, resource: str, amount: int):
+        self.resources[resource] = self.resources.get(resource, 0) + amount
+
+    def can_afford(self, cost: Dict[str, int]) -> bool:
+        for res, amount in cost.items():
+            if self.resources.get(res, 0) < amount:
+                return False
+        return True
+
+    def spend_resources(self, cost: Dict[str, int]) -> bool:
+        if not self.can_afford(cost):
+            return False
+        for res, amount in cost.items():
+            self.resources[res] = self.resources.get(res, 0) - amount
+        return True
+
+    def grant_starting_resources(self, wood=50, food=50, gold=20, money=0):
+        self.resources.update({
+            "wood": wood,
+            "food": food,
+            "gold": gold,
+            "money": money,
+        })
 
     # --------------------------
 
@@ -83,18 +117,15 @@ class Player:
 
     # --------------------------
 
-    def build(self, building: str):
+    def build(self, building: str, free: bool = False):
+
+        if building not in BUILDING_COSTS:
+            return False
 
         cost = BUILDING_COSTS[building]
-
-        for res, amount in cost.items():
-
-            if self.resources[res] < amount:
-                print("Pas assez de ressources !")
-                return False
-
-        for res, amount in cost.items():
-            self.resources[res] -= amount
+        if not free and not self.spend_resources(cost):
+            print("Pas assez de ressources !")
+            return False
 
         self.buildings.append(building)
 
@@ -128,14 +159,8 @@ class Player:
                 self.trapped_buildings.remove(i)
                 continue
 
-            if b == "farm":
-                income["food"] = income.get("food", 0) + 3
-
-            elif b == "barracks":
-                income["gold"] = income.get("gold", 0) + 1
-
-            elif b == "blacksmith":
-                income["wood"] = income.get("wood", 0) + 2
+            for res, amount in BUILDING_INCOME.get(b, {}).items():
+                income[res] = income.get(res, 0) + amount
 
         return income
 
@@ -161,6 +186,32 @@ def generate_cards():
     random.shuffle(cards)
 
     return cards
+
+
+def buildings_unlocked_for_period(period: int):
+    unlocked = []
+    for current_period in sorted(BUILDINGS_BY_PERIOD):
+        if current_period <= period:
+            unlocked.extend(BUILDINGS_BY_PERIOD[current_period])
+    return unlocked
+
+
+def describe_card(card_type, card):
+    if card_type == "resource":
+        effects = ", ".join(f"+{v} {k}" for k, v in card["effect"].items())
+        return f"{card['name']} ({effects})"
+    if card_type == "building":
+        return f"{card['name']} (batiment gratuit: {card['building']})"
+    if card_type == "malus":
+        descriptions = {
+            "fire": "Fait perdre de la nourriture",
+            "storm": "Detruit une partie du bois",
+            "destroy_building": "Detruit un batiment aleatoire",
+            "steal_gold": "Fait perdre de l'or",
+            "trap_building": "Piege un batiment pour le prochain tour",
+        }
+        return f"{card['name']} ({descriptions.get(card['type'], 'Effet special')})"
+    return card.get("name", "Carte")
 
 
 def show_cards(cards):
@@ -211,7 +262,7 @@ def apply_card(player: Player, card_type, card):
     elif card_type == "building":
 
         building = card["building"]
-        player.buildings.append(building)
+        player.build(building, free=True)
 
         print(f"Bâtiment {building} ajouté gratuitement")
 
@@ -271,7 +322,7 @@ class TurnManager:
         self.turn_number = 0
         self.period = 1
 
-        self.available_buildings = BUILDINGS_BY_PERIOD[1].copy()
+        self.available_buildings = buildings_unlocked_for_period(1)
 
     # --------------------------
 
@@ -319,6 +370,7 @@ class TurnManager:
             self.period += 1
             print(f"\nNOUVELLE PÉRIODE : {self.period}")
 
+        self.available_buildings = buildings_unlocked_for_period(self.period)
         self._played_this_round.clear()
 
 # ==============================

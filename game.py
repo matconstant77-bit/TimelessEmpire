@@ -6,6 +6,10 @@ import random
 from io import StringIO
 
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def asset_path(name):
+    return os.path.join(BASE_DIR, name)
 
 # Rediriger stdout et stderr pour supprimer les messages de pygame
 old_stdout = sys.stdout
@@ -44,24 +48,29 @@ game_state = "menu"
 carte = None  # Instance Carte hex
 turn_manager = None
 current_player_resources = None  # dict or PlayerResources
+players = []
+turn_started_at = None
+current_turn_cards = None
+status_message = "Bienvenue dans Timeless Empire."
+status_message_until = 0
 
 #chargement des images
 liste_actuelle=[]
 
 #images de fond (menus et maps)
-menu = pygame.image.load("background.png").convert_alpha()
+menu = pygame.image.load(asset_path("background.png")).convert_alpha()
 menu = pygame.transform.scale(menu,(1920,1080))
 
 #tuiles de terrain
 
 try:
-    Eau_1 = pygame.transform.scale(pygame.image.load("Eau_1.png"),(32,42))
-    Eau_2 = pygame.transform.scale(pygame.image.load("Eau_2.png"),(32,42))
-    Eau_3 = pygame.transform.scale(pygame.image.load("Eau_3.png"),(32,42))
-    Herbe_1 = pygame.transform.scale(pygame.image.load("Herbe_1.png"),(32,42))
-    Herbe_2 = pygame.transform.scale(pygame.image.load("Herbe_2.png"),(32,42))
-    Herbe_3 = pygame.transform.scale(pygame.image.load("Herbe_3.png"),(32,42))
-    Pierre_1 = pygame.transform.scale(pygame.image.load("Pierre_1.png"),(32,42))
+    Eau_1 = pygame.transform.scale(pygame.image.load(asset_path("Eau_1.png")),(32,42))
+    Eau_2 = pygame.transform.scale(pygame.image.load(asset_path("Eau_2.png")),(32,42))
+    Eau_3 = pygame.transform.scale(pygame.image.load(asset_path("Eau_3.png")),(32,42))
+    Herbe_1 = pygame.transform.scale(pygame.image.load(asset_path("Herbe_1.png")),(32,42))
+    Herbe_2 = pygame.transform.scale(pygame.image.load(asset_path("Herbe_2.png")),(32,42))
+    Herbe_3 = pygame.transform.scale(pygame.image.load(asset_path("Herbe_3.png")),(32,42))
+    Pierre_1 = pygame.transform.scale(pygame.image.load(asset_path("Pierre_1.png")),(32,42))
     IMAGES_LOADED = True
 except Exception as e:
     # Créer des surfaces de couleur de remplacement
@@ -94,7 +103,7 @@ terrain_variantes = {
 
 
 #musique
-menu_music = "menu-musique.mp3"
+menu_music = asset_path("menu-musique.mp3")
 
 #couleurs
 BLANC = (255, 255, 255)
@@ -110,11 +119,42 @@ SHADOW = (0, 0, 0)
 #polices
 FONT_TITLE = pygame.font.SysFont(None, 72)
 FONT_BUTTON = pygame.font.SysFont(None, 36)
+FONT_PANEL_TITLE = pygame.font.SysFont(None, 34)
+FONT_PANEL_TEXT = pygame.font.SysFont(None, 26)
+FONT_SMALL = pygame.font.SysFont(None, 22)
+
+PANEL_WIDTH = 340
+TURN_DURATION_MS = tours.TURN_DURATION_MS
+EXPAND_COST = {"wood": 8, "food": 4, "gold": 2}
+BUILDING_TERRAINS = {
+    "farm": {"herbe", "foret"},
+    "barracks": {"herbe", "foret", "montagne"},
+    "blacksmith": {"herbe", "montagne"},
+}
+BUILDING_LABELS = {
+    "farm": "Ferme",
+    "barracks": "Caserne",
+    "blacksmith": "Forge",
+}
+TERRAIN_LABELS = {
+    "herbe": "Plaine",
+    "foret": "Foret",
+    "montagne": "Montagne",
+    "eau": "Eau",
+}
+PLAYER_COLORS = [
+    (255, 214, 92),
+    (96, 190, 255),
+    (255, 120, 120),
+    (130, 235, 150),
+    (220, 150, 255),
+]
 
 # --- Fonctions utilitaires pour les images UI ---
 
 def load_trimmed_image(path, min_alpha=25):
     """Charge une image et retourne uniquement la partie visible (alpha > min_alpha)."""
+    path = asset_path(path)
     if not os.path.exists(path):
         return None
     image = pygame.image.load(path).convert_alpha()
@@ -125,6 +165,7 @@ def load_trimmed_image(path, min_alpha=25):
 
 def load_menu_button_images(path):
     """Détecte les régions de boutons dans le spritesheet et retourne un dict par action."""
+    path = asset_path(path)
     if not os.path.exists(path):
         return {}
     sheet = pygame.image.load(path).convert_alpha()
@@ -155,6 +196,7 @@ def load_menu_button_images(path):
 
 def load_option_button_images(path):
     """Charge les images des boutons d'options depuis le spritesheet (indices 4-7)."""
+    path = asset_path(path)
     if not os.path.exists(path):
         return {}
     sheet = pygame.image.load(path).convert_alpha()
@@ -177,7 +219,7 @@ def load_option_button_images(path):
         if idx < len(rects):
             images[key] = sheet.subsurface(rects[idx]).copy()
     # Charge 1600x900 depuis son propre fichier
-    path_1600 = "1600 x 900.png"
+    path_1600 = asset_path("1600 x 900.png")
     if os.path.exists(path_1600):
         img_1600 = pygame.image.load(path_1600).convert_alpha()
         mask_1600 = pygame.mask.from_surface(img_1600, threshold=25)
@@ -226,14 +268,14 @@ def get_option_button_background(key, max_width, max_height):
     return None
 
 def draw_option_image_button(surface, rect, image, label=None):
-    """Dessine un bouton image dans le rect avec un label optionnel par dessus."""
+    """Dessine un bouton image dans le rect."""
     if image:
         img_rect = image.get_rect(center=rect.center)
         surface.blit(image, img_rect)
     if label:
         text_surf = FONT_BUTTON.render(label, True, BLANC)
-        text_rect = text_surf.get_rect(center=rect.center)
         shadow_surf = FONT_BUTTON.render(label, True, SHADOW)
+        text_rect = text_surf.get_rect(center=rect.center)
         surface.blit(shadow_surf, (text_rect.x + 2, text_rect.y + 2))
         surface.blit(text_surf, text_rect)
 
@@ -280,6 +322,8 @@ class Hexagone:
         self.tuile = tuile_surface if tuile_surface is not None else tuiles[type_terrain]   # Image associée
         self.selection_lift = 0.0           # Animation visuelle de sélection
         self.target_lift = 0.0              # Cible d'animation (0.0 ou 1.0)
+        self.owner = None
+        self.building = None
     
     def get_pixel_pos(self, size=32, vertical_spacing=42):
         """Retourne la position en pixels de l'hexagone."""
@@ -300,6 +344,7 @@ class Carte:
         self.largeur = largeur
         self.hauteur = hauteur
         self.hexagones = []
+        self.hex_by_coord = {}
         self.selected_hex = None
         self._mask_cache = {}
         self.generer_carte()
@@ -328,6 +373,7 @@ class Carte:
     def generer_carte(self):
         """Génère une carte en grands amas organiques avec moins d'eau."""
         self.hexagones.clear()
+        self.hex_by_coord.clear()
 
         # Poids de base (proportion de chaque terrain dans le pool de germes)
         terrain_pool = ['herbe'] * 45 + ['foret'] * 28 + ['montagne'] * 18 + ['eau'] * 9
@@ -384,7 +430,9 @@ class Carte:
             for q in range(self.largeur):
                 type_terrain = terrain_grid[(q, r)]
                 tuile_surface = self._choose_tile_surface(type_terrain)
-                self.hexagones.append(Hexagone(q, r, type_terrain, tuile_surface=tuile_surface))
+                hex_obj = Hexagone(q, r, type_terrain, tuile_surface=tuile_surface)
+                self.hexagones.append(hex_obj)
+                self.hex_by_coord[(q, r)] = hex_obj
 
     def _choose_tile_surface(self, type_terrain):
         """Choisit une variante visuelle d'une famille de terrain."""
@@ -404,6 +452,30 @@ class Carte:
             if (nq, nr) in terrain_grid:
                 found.append(terrain_grid[(nq, nr)])
         return found
+
+    def get_hex(self, q, r):
+        return self.hex_by_coord.get((q, r))
+
+    def get_neighbors(self, hex_obj):
+        if hex_obj.r % 2 == 0:
+            offsets = [(-1, 0), (1, 0), (0, -1), (-1, -1), (0, 1), (-1, 1)]
+        else:
+            offsets = [(-1, 0), (1, 0), (1, -1), (0, -1), (1, 1), (0, 1)]
+        neighbors = []
+        for dq, dr in offsets:
+            neighbor = self.get_hex(hex_obj.q + dq, hex_obj.r + dr)
+            if neighbor is not None:
+                neighbors.append(neighbor)
+        return neighbors
+
+    def get_bounds(self):
+        if not self.hexagones:
+            return pygame.Rect(0, 0, 0, 0)
+        min_x = min(h.get_pixel_pos()[0] for h in self.hexagones)
+        min_y = min(h.get_pixel_pos()[1] for h in self.hexagones)
+        max_x = max(h.get_pixel_pos()[0] + h.tuile.get_width() for h in self.hexagones)
+        max_y = max(h.get_pixel_pos()[1] + h.tuile.get_height() for h in self.hexagones)
+        return pygame.Rect(min_x, min_y, max_x - min_x, max_y - min_y)
     
     def dessiner(self, surface, offset_x=0, offset_y=0):
         """Dessine tous les hexagones sur la surface en ordre de profondeur correct."""
@@ -423,6 +495,20 @@ class Carte:
             if -50 < x < surface.get_width() + 50 and -50 < y < surface.get_height() + 50:
                 try:
                     surface.blit(hex_obj.tuile, (x, y))
+                    if hex_obj.owner is not None:
+                        owner_color = getattr(hex_obj.owner, "color", JAUNE)
+                        indicator = (x + hex_obj.tuile.get_width() // 2, y + max(10, int(hex_obj.tuile.get_height() * 0.24)))
+                        pygame.draw.circle(surface, (0, 0, 0), indicator, 10)
+                        pygame.draw.circle(surface, owner_color, indicator, 7)
+                    if hex_obj.building:
+                        badge_rect = pygame.Rect(0, 0, 64, 20)
+                        badge_rect.midbottom = (x + hex_obj.tuile.get_width() // 2, y + int(hex_obj.tuile.get_height() * 0.62))
+                        pygame.draw.rect(surface, (10, 16, 28), badge_rect, border_radius=10)
+                        pygame.draw.rect(surface, (215, 225, 255), badge_rect, width=1, border_radius=10)
+                        badge_text = FONT_SMALL.render(BUILDING_LABELS.get(hex_obj.building, hex_obj.building), True, BLANC)
+                        badge_text = scale_surface_to_fit(badge_text, badge_rect.width - 8, badge_rect.height - 4)
+                        badge_text_rect = badge_text.get_rect(center=badge_rect.center)
+                        surface.blit(badge_text, badge_text_rect)
                 except Exception as e:
                     pass
 
@@ -537,6 +623,410 @@ boutons_menu = [
 ]
 
 
+def set_status(message, duration_ms=3200):
+    global status_message, status_message_until
+    status_message = message
+    status_message_until = pygame.time.get_ticks() + duration_ms
+
+
+def get_current_player():
+    if not turn_manager:
+        return None
+    try:
+        return turn_manager.current_player()
+    except RuntimeError:
+        return None
+
+
+def get_map_offsets(win, current_map):
+    if not current_map:
+        return 0, 0
+    bounds = current_map.get_bounds()
+    available_w = max(260, win.get_width() - PANEL_WIDTH - 24)
+    available_h = max(240, win.get_height() - 24)
+    offset_x = 12 + (available_w - bounds.width) // 2 - bounds.x
+    offset_y = 12 + (available_h - bounds.height) // 2 - bounds.y
+    return offset_x, offset_y
+
+
+def claim_hex(hex_obj, player):
+    if hex_obj is None:
+        return
+    hex_obj.owner = player
+
+
+def assign_starting_territories(current_map, current_players):
+    if not current_map or not current_players:
+        return
+
+    land_hexes = [hex_obj for hex_obj in current_map.hexagones if hex_obj.type_terrain != "eau"]
+    chosen_spawns = []
+
+    def score_spawn(hex_obj, target_q, target_r):
+        distance = abs(hex_obj.q - target_q) + abs(hex_obj.r - target_r)
+        if not chosen_spawns:
+            return distance
+        min_spacing = min(abs(hex_obj.q - other.q) + abs(hex_obj.r - other.r) for other in chosen_spawns)
+        spacing_penalty = max(0, 14 - min_spacing) * 12
+        return distance + spacing_penalty
+
+    for idx, player in enumerate(current_players):
+        target_q = int((idx + 1) * current_map.largeur / (len(current_players) + 1))
+        target_r = current_map.hauteur // 2 + (-7 if idx % 2 == 0 else 7)
+        available_hexes = [hex_obj for hex_obj in land_hexes if hex_obj not in chosen_spawns]
+        spawn_hex = min(available_hexes, key=lambda hex_obj: score_spawn(hex_obj, target_q, target_r))
+        chosen_spawns.append(spawn_hex)
+        player.home_hex = spawn_hex
+        claim_hex(spawn_hex, player)
+
+        claimed_neighbors = 0
+        for neighbor in current_map.get_neighbors(spawn_hex):
+            if neighbor.type_terrain == "eau" or neighbor.owner is not None:
+                continue
+            claim_hex(neighbor, player)
+            claimed_neighbors += 1
+            if claimed_neighbors >= 3:
+                break
+
+        spawn_hex.building = "farm"
+        if "farm" not in player.buildings:
+            player.build("farm", free=True)
+
+
+def setup_players(current_players):
+    for idx, player in enumerate(current_players):
+        player.color = PLAYER_COLORS[idx % len(PLAYER_COLORS)]
+        player.buildings = []
+        player.trapped_buildings.clear()
+        player.home_hex = None
+        player.grant_starting_resources()
+
+
+def start_session(current_players, next_game_state):
+    global players, turn_manager, carte, game_state, current_player_resources
+    players = current_players
+    setup_players(players)
+    turn_manager = tours.TurnManager(players)
+    carte = Carte(22, 18)
+    assign_starting_territories(carte, players)
+    game_state = next_game_state
+    current_player_resources = turn_manager.current_player().resources
+    begin_turn(f"Tour de {turn_manager.current_player().name}. Choisissez une carte.")
+
+
+def begin_turn(message=None):
+    global current_player_resources, turn_started_at, current_turn_cards
+    player = get_current_player()
+    if player is None:
+        return
+    current_player_resources = player.resources
+    turn_started_at = pygame.time.get_ticks()
+    current_turn_cards = tours.generate_cards()
+    if message is None:
+        message = f"Tour de {player.name}. Choisissez une carte."
+    set_status(message)
+
+
+def choose_card(card_index):
+    global current_turn_cards, current_player_resources
+    player = get_current_player()
+    if player is None or not current_turn_cards or not (0 <= card_index < len(current_turn_cards)):
+        return
+    card_type, card = current_turn_cards[card_index]
+    tours.apply_card(player, card_type, card)
+    current_turn_cards = None
+    current_player_resources = player.resources
+    set_status(f"{player.name} choisit : {card['name']}")
+
+
+def finish_current_turn(auto=False):
+    global current_player_resources
+    player = get_current_player()
+    if player is None or not turn_manager:
+        return
+    if current_turn_cards:
+        if auto:
+            choose_card(random.randrange(len(current_turn_cards)))
+        else:
+            set_status("Choisissez d'abord une carte.")
+            return
+    turn_manager.player_finished(player)
+    current_player_resources = turn_manager.current_player().resources
+    begin_turn(f"Nouveau tour : {turn_manager.current_player().name}")
+
+
+def has_adjacent_owned_tile(current_map, player, target_hex):
+    return any(neighbor.owner is player for neighbor in current_map.get_neighbors(target_hex))
+
+
+def can_expand_to_hex(player, target_hex):
+    if player is None or target_hex is None:
+        return False, "Case invalide"
+    if target_hex.type_terrain == "eau":
+        return False, "Impossible sur l'eau"
+    if target_hex.owner is player:
+        return False, "Territoire deja a vous"
+    if target_hex.owner is not None:
+        return False, "Territoire deja occupe"
+    if not has_adjacent_owned_tile(carte, player, target_hex):
+        return False, "Besoin d'une case voisine"
+    if not player.can_afford(EXPAND_COST):
+        return False, "Ressources insuffisantes"
+    return True, ""
+
+
+def expand_selected_hex():
+    player = get_current_player()
+    selected_hex = carte.selected_hex if carte else None
+    ok, reason = can_expand_to_hex(player, selected_hex)
+    if not ok:
+        set_status(reason)
+        return
+    player.spend_resources(EXPAND_COST)
+    selected_hex.owner = player
+    set_status(f"{player.name} etend son territoire.")
+
+
+def can_build_on_hex(player, target_hex, building):
+    if player is None or target_hex is None:
+        return False, "Selectionnez une case"
+    if target_hex.owner is not player:
+        return False, "Case hors territoire"
+    if target_hex.type_terrain == "eau":
+        return False, "Impossible sur l'eau"
+    if target_hex.building is not None:
+        return False, "Batiment deja present"
+    if building not in turn_manager.available_buildings:
+        return False, "Batiment non debloque"
+    if target_hex.type_terrain not in BUILDING_TERRAINS.get(building, set()):
+        return False, "Terrain incompatible"
+    if not player.can_afford(tours.BUILDING_COSTS[building]):
+        return False, "Ressources insuffisantes"
+    return True, ""
+
+
+def build_on_selected_hex(building):
+    player = get_current_player()
+    selected_hex = carte.selected_hex if carte else None
+    ok, reason = can_build_on_hex(player, selected_hex, building)
+    if not ok:
+        set_status(reason)
+        return
+    if player.build(building):
+        selected_hex.building = building
+        set_status(f"{BUILDING_LABELS.get(building, building)} construit.")
+
+
+def get_turn_remaining_ms():
+    if turn_started_at is None:
+        return TURN_DURATION_MS
+    return max(0, TURN_DURATION_MS - (pygame.time.get_ticks() - turn_started_at))
+
+
+def draw_button(surface, rect, label, mouse_pos, enabled=True, accent=(75, 112, 210)):
+    hovered = rect.collidepoint(mouse_pos)
+    base_color = accent if enabled else (70, 70, 82)
+    hover_color = tuple(min(255, c + 28) for c in base_color)
+    pygame.draw.rect(surface, hover_color if hovered and enabled else base_color, rect, border_radius=16)
+    pygame.draw.rect(surface, (18, 24, 44), rect, width=2, border_radius=16)
+    text_color = BLANC if enabled else (185, 185, 195)
+    text = FONT_BUTTON.render(label, True, text_color)
+    text_rect = text.get_rect(center=rect.center)
+    surface.blit(text, text_rect)
+
+
+def build_game_ui_layout(win):
+    win_w, win_h = win.get_size()
+    panel_rect = pygame.Rect(win_w - PANEL_WIDTH, 0, PANEL_WIDTH, win_h)
+    end_turn_rect = pygame.Rect(panel_rect.x + 20, panel_rect.bottom - 72, panel_rect.width - 40, 50)
+    action_buttons = []
+
+    selected_hex = carte.selected_hex if carte else None
+    current_player = get_current_player()
+    action_y = panel_rect.y + 360
+    button_w = panel_rect.width - 40
+    button_h = 42
+    gap = 10
+
+    if selected_hex is not None and current_turn_cards is None:
+        can_expand, _ = can_expand_to_hex(current_player, selected_hex)
+        action_buttons.append({
+            "id": "expand",
+            "label": "Revendiquer (8B/4N/2O)",
+            "rect": pygame.Rect(panel_rect.x + 20, action_y, button_w, button_h),
+            "enabled": can_expand,
+        })
+        action_y += button_h + gap
+
+        for building in turn_manager.available_buildings:
+            enabled, _ = can_build_on_hex(current_player, selected_hex, building)
+            cost = tours.BUILDING_COSTS.get(building, {})
+            cost_text = "/".join(
+                f"{amount}{key[0].upper()}" for key, amount in cost.items() if amount > 0
+            ) or "Gratuit"
+            action_buttons.append({
+                "id": f"build:{building}",
+                "label": f"{BUILDING_LABELS.get(building, building)} ({cost_text})",
+                "rect": pygame.Rect(panel_rect.x + 20, action_y, button_w, button_h),
+                "enabled": enabled,
+            })
+            action_y += button_h + gap
+
+    card_buttons = []
+    card_panel = None
+    if current_turn_cards:
+        modal_w = min(860, max(560, win_w - PANEL_WIDTH - 60))
+        modal_h = 250
+        modal_x = max(20, (win_w - PANEL_WIDTH - modal_w) // 2)
+        card_panel = pygame.Rect(modal_x, 36, modal_w, modal_h)
+        card_w = (modal_w - 60) // 3
+        for idx, _card in enumerate(current_turn_cards):
+            rect = pygame.Rect(card_panel.x + 15 + idx * (card_w + 15), card_panel.y + 70, card_w, 150)
+            card_buttons.append({"id": idx, "rect": rect})
+
+    return {
+        "panel_rect": panel_rect,
+        "end_turn_rect": end_turn_rect,
+        "action_buttons": action_buttons,
+        "card_panel": card_panel,
+        "card_buttons": card_buttons,
+    }
+
+
+def draw_game_ui(surface, layout, mouse_pos):
+    panel_rect = layout["panel_rect"]
+    pygame.draw.rect(surface, (10, 14, 24), panel_rect)
+    pygame.draw.rect(surface, (88, 126, 210), panel_rect, width=2)
+
+    player = get_current_player()
+    player_name = player.name if player else "Aucun joueur"
+    title = FONT_PANEL_TITLE.render(player_name, True, BLANC)
+    surface.blit(title, (panel_rect.x + 18, 16))
+
+    remaining_ms = get_turn_remaining_ms()
+    mins = remaining_ms // 60000
+    secs = (remaining_ms % 60000) // 1000
+    timer = FONT_PANEL_TEXT.render(f"Temps restant : {mins:02d}:{secs:02d}", True, (255, 232, 160))
+    surface.blit(timer, (panel_rect.x + 18, 48))
+
+    if turn_manager:
+        info_lines = [
+            f"Tour : {turn_manager.turn_number + 1}",
+            f"Periode : {turn_manager.period}",
+            f"Batiments : {', '.join(BUILDING_LABELS.get(b, b) for b in turn_manager.available_buildings)}",
+        ]
+        for idx, line in enumerate(info_lines):
+            text = FONT_SMALL.render(line, True, (205, 218, 255))
+            surface.blit(text, (panel_rect.x + 18, 80 + idx * 22))
+
+    ressources.draw_resources_overlay(
+        surface,
+        current_player_resources,
+        area=pygame.Rect(panel_rect.x + 16, 150, panel_rect.width - 32, 150),
+        title="Ressources",
+    )
+
+    selected_hex = carte.selected_hex if carte else None
+    info_top = 318
+    info_title = FONT_PANEL_TITLE.render("Case selectionnee", True, BLANC)
+    surface.blit(info_title, (panel_rect.x + 18, info_top))
+
+    if selected_hex is None:
+        help_lines = [
+            "Cliquez sur une case pour voir ses details.",
+            "Choisissez une carte au debut du tour,",
+            "puis etendez votre territoire ou construisez.",
+        ]
+        for idx, line in enumerate(help_lines):
+            text = FONT_SMALL.render(line, True, (200, 208, 230))
+            surface.blit(text, (panel_rect.x + 18, info_top + 36 + idx * 22))
+    else:
+        owner_name = selected_hex.owner.name if selected_hex.owner else "Neutre"
+        building_name = BUILDING_LABELS.get(selected_hex.building, "Aucun")
+        if selected_hex.building is None:
+            building_name = "Aucun"
+        details = [
+            f"Coordonnees : ({selected_hex.q}, {selected_hex.r})",
+            f"Terrain : {TERRAIN_LABELS.get(selected_hex.type_terrain, selected_hex.type_terrain)}",
+            f"Proprietaire : {owner_name}",
+            f"Batiment : {building_name}",
+        ]
+        for idx, line in enumerate(details):
+            text = FONT_SMALL.render(line, True, (218, 225, 245))
+            surface.blit(text, (panel_rect.x + 18, info_top + 36 + idx * 22))
+
+    for button in layout["action_buttons"]:
+        draw_button(surface, button["rect"], button["label"], mouse_pos, enabled=button["enabled"])
+
+    draw_button(surface, layout["end_turn_rect"], "Fin du tour", mouse_pos, enabled=True, accent=(0, 150, 82))
+
+    if current_turn_cards and layout["card_panel"] is not None:
+        shade = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
+        shade.fill((0, 0, 0, 110))
+        surface.blit(shade, (0, 0))
+
+        modal = layout["card_panel"]
+        pygame.draw.rect(surface, (14, 20, 36), modal, border_radius=24)
+        pygame.draw.rect(surface, (110, 150, 240), modal, width=2, border_radius=24)
+        title = FONT_PANEL_TITLE.render("Choisissez une carte", True, BLANC)
+        subtitle = FONT_SMALL.render("Chaque debut de tour commence par un choix de carte.", True, (205, 215, 240))
+        surface.blit(title, (modal.x + 18, modal.y + 14))
+        surface.blit(subtitle, (modal.x + 18, modal.y + 44))
+
+        for idx, button in enumerate(layout["card_buttons"]):
+            rect = button["rect"]
+            hovered = rect.collidepoint(mouse_pos)
+            pygame.draw.rect(surface, (42, 62, 118) if hovered else (24, 34, 60), rect, border_radius=18)
+            pygame.draw.rect(surface, (130, 175, 255), rect, width=2, border_radius=18)
+
+            card_type, card = current_turn_cards[idx]
+            card_name = FONT_PANEL_TEXT.render(card["name"], True, BLANC)
+            desc = tours.describe_card(card_type, card)
+            card_desc = FONT_SMALL.render(desc, True, (215, 225, 245))
+            card_desc = scale_surface_to_fit(card_desc, rect.width - 24, 32)
+            surface.blit(card_name, (rect.x + 12, rect.y + 12))
+            surface.blit(card_desc, (rect.x + 12, rect.y + 50))
+
+            pick = FONT_SMALL.render("Cliquer pour choisir", True, (255, 229, 160))
+            surface.blit(pick, (rect.x + 12, rect.bottom - 28))
+
+    if pygame.time.get_ticks() < status_message_until:
+        status_rect = pygame.Rect(18, surface.get_height() - 46, max(340, min(720, surface.get_width() - PANEL_WIDTH - 36)), 30)
+        pygame.draw.rect(surface, (8, 12, 22), status_rect, border_radius=12)
+        pygame.draw.rect(surface, (100, 145, 235), status_rect, width=1, border_radius=12)
+        status_text = FONT_SMALL.render(status_message, True, (235, 240, 255))
+        surface.blit(status_text, (status_rect.x + 12, status_rect.y + 6))
+
+
+def handle_game_ui_click(mouse_pos, layout):
+    if current_turn_cards:
+        for button in layout["card_buttons"]:
+            if button["rect"].collidepoint(mouse_pos):
+                choose_card(button["id"])
+                return True
+        return True
+
+    for button in layout["action_buttons"]:
+        if button["rect"].collidepoint(mouse_pos):
+            if not button["enabled"]:
+                return True
+            if button["id"] == "expand":
+                expand_selected_hex()
+                return True
+            if button["id"].startswith("build:"):
+                build_on_selected_hex(button["id"].split(":", 1)[1])
+                return True
+
+    if layout["end_turn_rect"].collidepoint(mouse_pos):
+        finish_current_turn(auto=False)
+        return True
+
+    if layout["panel_rect"].collidepoint(mouse_pos):
+        return True
+
+    return False
+
+
 def show_options(screen, menu_surface, clock):
     """Affiche un menu modal pour choisir la résolution. Retourne (screen, menu_surface)."""
     options_running = True
@@ -571,13 +1061,13 @@ def show_options(screen, menu_surface, clock):
                     for rect, (rw, rh) in option_buttons:
                         if rect.collidepoint((mx, my)):
                             # change la résolution et remet à l'échelle l'image de fond du menu si possible
-                            screen = pygame.display.set_mode((rw, rh))
+                            screen = pygame.display.set_mode((rw, rh), pygame.RESIZABLE)
                             try:
-                                menu_image = pygame.image.load("menu.png").convert_alpha()
+                                menu_image = pygame.image.load(asset_path("background.png")).convert_alpha()
                                 menu_surface = pygame.transform.scale(menu_image, (rw, rh))
                             except Exception:
-                                # si le rechargement échoue, ignore et continue avec l'ancien menu
-                                pass
+                                # Si le rechargement échoue, conserver un fond cohérent à la nouvelle taille.
+                                menu_surface = pygame.transform.scale(menu_surface, (rw, rh))
                             options_running = False
                             break
 
@@ -603,27 +1093,19 @@ def show_options(screen, menu_surface, clock):
                 surf = pygame.Surface((btn_w, btn_h), pygame.SRCALPHA)
                 pygame.draw.rect(surf, color, (0, 0, btn_w, btn_h), border_radius=16)
                 screen.blit(surf, rect)
-                text_surf = FONT_BUTTON.render(label, True, BLANC)
-                text_rect = text_surf.get_rect(center=rect.center)
-                shadow = FONT_BUTTON.render(label, True, SHADOW)
-                screen.blit(shadow, (text_rect.x + 2, text_rect.y + 2))
-                screen.blit(text_surf, text_rect)
+                draw_option_image_button(screen, rect, None, label=label)
 
         # Dessine le bouton Back
         bg = get_option_button_background("back", back_rect.width, back_rect.height)
         if bg:
-            draw_option_image_button(screen, back_rect, bg, label="Back")
+            draw_option_image_button(screen, back_rect, bg, label="Retour")
         else:
             is_hover = back_rect.collidepoint((mx, my))
             color = HOVER_BLUE if is_hover else TRANSLUCENT_BLUE
             surf = pygame.Surface((btn_w, btn_h), pygame.SRCALPHA)
             pygame.draw.rect(surf, color, (0, 0, btn_w, btn_h), border_radius=16)
             screen.blit(surf, back_rect)
-            back_text = FONT_BUTTON.render("Back", True, BLANC)
-            back_text_rect = back_text.get_rect(center=back_rect.center)
-            back_shadow = FONT_BUTTON.render("Back", True, SHADOW)
-            screen.blit(back_shadow, (back_text_rect.x + 2, back_text_rect.y + 2))
-            screen.blit(back_text, back_text_rect)
+            draw_option_image_button(screen, back_rect, None, label="Retour")
 
         pygame.display.flip()
         clock.tick(60)
@@ -645,124 +1127,82 @@ def music_menu(music_file):
 
 running = True
 clock = pygame.time.Clock()
-FONT_TIMER = pygame.font.SysFont("consolas", 34, bold=True)
-GAME_DURATION_MS = 40 * 60 * 1000  # 40 minutes en ms
-game_timer_start = None  # Temps pygame au démarrage de la partie
-# Lance la musique du menu
 music_menu(menu_music)
 
-# Met à jour la taille actuelle de la fenêtre et recentre les boutons
 while running:
-    clock.tick(120)  # Limite à 120 FPS
+    clock.tick(120)
 
-    # Mettre à jour les positions des boutons EN PREMIER
+    ui_layout = build_game_ui_layout(fenetre) if game_state in ("game", "multi_game") and turn_manager else None
+
+    if game_state in ("game", "multi_game") and turn_manager and get_turn_remaining_ms() <= 0:
+        finish_current_turn(auto=True)
+        ui_layout = build_game_ui_layout(fenetre)
 
     win_w, win_h = fenetre.get_size()
     for btn in boutons_menu:
         btn.rect.center = (win_w // 2, btn.center_y)
 
-# Boucle principale : Événements (clics, touches), update, render (120 FPS)
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                game_state = "menu"  # Retour menu
-            elif event.key == pygame.K_t and game_state == "game":
-                if current_player_resources and hasattr(current_player_resources, 'add_resource'):
-                    current_player_resources.add_resource('wood', 10)
-                    current_player_resources.add_resource('food', 10)
-                    current_player_resources.add_resource('gold', 5)
+                game_state = "menu"
+                set_status("Retour au menu.")
+            elif event.key == pygame.K_t and game_state in ("game", "multi_game"):
+                player = get_current_player()
+                if player:
+                    player.add_resource("wood", 10)
+                    player.add_resource("food", 10)
+                    player.add_resource("gold", 5)
+                    current_player_resources = player.resources
+                    set_status("Bonus de ressources ajoute.")
+            elif event.key == pygame.K_SPACE and game_state in ("game", "multi_game"):
+                finish_current_turn(auto=False)
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mouse_pos = event.pos
             if game_state == "menu":
                 for btn in boutons_menu:
-                    if btn.is_clicked(mouse_pos, (1,0,0)):
+                    if btn.is_clicked(mouse_pos, (1, 0, 0)):
                         if btn.action == "quit":
                             running = False
                         elif btn.action == "new_game":
-                            carte = Carte(60, 52)
-                            game_state = "game"
-                            game_timer_start = pygame.time.get_ticks()
-                            current_player_resources = ressources.PlayerResources(wood=50, food=50, gold=20, money=0)
-
+                            start_session([tours.Player("Empire")], "game")
                         elif btn.action == "multiplayer":
-                            turn_manager, players = player_select.select_players(fenetre, clock)
-                            if turn_manager:
-                                game_state = "multi_game"
-                                game_timer_start = pygame.time.get_ticks()
-                                current_player_resources = turn_manager.current_player().resources
+                            selection_result = player_select.select_players(fenetre, clock)
+                            if selection_result:
+                                _, selected_players = selection_result
+                                start_session(selected_players, "multi_game")
                         elif btn.action == "options":
-                            fenetre, menu = show_options(fenetre, menu, clock)  # Resize fenêtre
-            elif game_state == "game" and carte:
-                clicked_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1])
-                carte.select_hex(clicked_hex)
-            elif game_state == "multi_game" and 'end_turn_rect' in locals() and end_turn_rect.collidepoint(mouse_pos):
-                if turn_manager:
-                    turn_manager.player_finished(turn_manager.current_player())
-            elif game_state == "multi_game" and carte:
-                clicked_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1])
+                            fenetre, menu = show_options(fenetre, menu, clock)
+            elif game_state in ("game", "multi_game") and carte:
+                if ui_layout and handle_game_ui_click(mouse_pos, ui_layout):
+                    continue
+                map_offset_x, map_offset_y = get_map_offsets(fenetre, carte)
+                clicked_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1], map_offset_x, map_offset_y)
                 carte.select_hex(clicked_hex)
 
-    # Render selon game_state
     mouse_pos = pygame.mouse.get_pos()
     if game_state == "menu":
         win_w, win_h = fenetre.get_size()
-        fenetre.blit(menu, (0, 0))  # Fond menu
+        fenetre.blit(pygame.transform.smoothscale(menu, (win_w, win_h)), (0, 0))
         title_surf, title_rect = update_menu_layout(fenetre)
-        fenetre.blit(title_surf, title_rect)  # Bannière titre image
+        fenetre.blit(title_surf, title_rect)
         for btn in boutons_menu:
             btn.draw(fenetre, mouse_pos)
 
-    elif game_state == "game":
-        fenetre.fill(NOIR)
+    elif game_state in ("game", "multi_game"):
+        fenetre.fill((6, 10, 18))
+        map_offset_x, map_offset_y = get_map_offsets(fenetre, carte)
         if carte:
-            carte.dessiner(fenetre)
-            hovered_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1])
-            carte.draw_hex_highlight(fenetre, hovered_hex)
-        ressources.draw_resources_overlay(fenetre, current_player_resources)
-        instruction = FONT_BUTTON.render("Échap: Menu | T: +Ressources", True, BLANC)
-        fenetre.blit(instruction, (20, 20))
+            carte.dessiner(fenetre, map_offset_x, map_offset_y)
+            hovered_hex = None
+            if not (ui_layout and ui_layout["panel_rect"].collidepoint(mouse_pos)) and not current_turn_cards:
+                hovered_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1], map_offset_x, map_offset_y)
+            carte.draw_hex_highlight(fenetre, hovered_hex, map_offset_x, map_offset_y)
+        if ui_layout:
+            draw_game_ui(fenetre, ui_layout, mouse_pos)
 
-        # --- Timer central ---
-        if game_timer_start is not None:
-            elapsed = pygame.time.get_ticks() - game_timer_start
-            remaining = max(0, GAME_DURATION_MS - elapsed)
-            mins = remaining // 60000
-            secs = (remaining % 60000) // 1000
-            timer_text = f"{mins:02d}:{secs:02d}"
-            timer_surf = FONT_TIMER.render(timer_text, False, BLANC)
-            tw, th = timer_surf.get_size()
-            pad_x, pad_y = 8, 2
-            box_w, box_h = tw + pad_x * 2, th + pad_y * 2
-            win_w, win_h = fenetre.get_size()
-            box_x = (win_w - box_w) // 2
-            box_y = 0
-            box_surf = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
-            pygame.draw.rect(box_surf, (0, 0, 0, 180), (0, 0, box_w, box_h))
-            pygame.draw.rect(box_surf, (200, 200, 200, 200), (0, 0, box_w, box_h), width=1)
-            fenetre.blit(box_surf, (box_x, box_y))
-            fenetre.blit(timer_surf, (box_x + pad_x, box_y + pad_y))
-
-    elif game_state == "multi_game":
-        fenetre.fill(NOIR)
-        if carte:
-            carte.dessiner(fenetre)
-            hovered_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1])
-            carte.draw_hex_highlight(fenetre, hovered_hex)
-        ressources.draw_resources_overlay(fenetre, current_player_resources)
-        # Turn indicator
-        if turn_manager:
-            turn_text = FONT_BUTTON.render(f"Tour de {turn_manager.current_player().name} (Tour {turn_manager.turn_number + 1}, Période {turn_manager.period})", True, BLANC)
-            fenetre.blit(turn_text, (20, 60))
-        instruction = FONT_BUTTON.render("Échap: Menu | Cliquez End Turn", True, BLANC)
-        fenetre.blit(instruction, (20, 20))
-        # End Turn button
-        end_turn_btn = Button("End Turn", win_h - 100, "end_turn")
-        end_turn_btn.draw(fenetre, mouse_pos)
-        end_turn_rect = end_turn_btn.rect
-
-    # Met à jour l'affichage
     pygame.display.flip()
 
 # Nettoyage
