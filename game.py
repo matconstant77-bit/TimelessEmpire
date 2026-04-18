@@ -8,8 +8,10 @@ from io import StringIO
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+
 def asset_path(name):
     return os.path.join(BASE_DIR, name)
+
 
 # Rediriger stdout et stderr pour supprimer les messages de pygame
 old_stdout = sys.stdout
@@ -17,7 +19,7 @@ old_stderr = sys.stderr
 sys.stdout = StringIO()
 sys.stderr = StringIO()
 
-import pygame #importation de pygame
+import pygame
 from pygame.locals import *
 import ressources
 import tours
@@ -26,54 +28,47 @@ import player_select
 sys.stdout = old_stdout
 sys.stderr = old_stderr
 
-# Fichier principal: Gère menu, carte hex, ressources, et intégration multiplayer/tours
-# État jeu: "menu" / "game" / "multi_game"
+# Fichier principal: Gere menu, carte hex, ressources, et integration multiplayer/tours
+# Etat jeu: "menu" / "game" / "multi_game"
 
 
-pygame.init() #démarrage de pygame
+pygame.init()
 try:
     pygame.mixer.init()
 except pygame.error:
     pass
 
-#création d'une fenêtre
+# creation d'une fenetre
 display_info = pygame.display.Info()
 start_w = min(1920, max(1024, display_info.current_w))
 start_h = min(1080, max(720, display_info.current_h))
 fenetre = pygame.display.set_mode((start_w, start_h), pygame.RESIZABLE)
 
 # Variables globales jeu
-# game_state contrôle affichage/logique (menu / game / multi_game)
+# game_state controle affichage/logique (menu / game / multi_game)
 game_state = "menu"
-carte = None  # Instance Carte hex
+carte = None
 turn_manager = None
-current_player_resources = None  # dict or PlayerResources
-players = []
-turn_started_at = None
-current_turn_cards = None
-status_message = "Bienvenue dans Timeless Empire."
-status_message_until = 0
+current_player_resources = None
 
-#chargement des images
-liste_actuelle=[]
+# chargement des images
+liste_actuelle = []
 
-#images de fond (menus et maps)
+# images de fond (menus et maps)
 menu = pygame.image.load(asset_path("background.png")).convert_alpha()
-menu = pygame.transform.scale(menu,(1920,1080))
+menu = pygame.transform.scale(menu, (1920, 1080))
 
-#tuiles de terrain
-
+# tuiles de terrain
 try:
-    Eau_1 = pygame.transform.scale(pygame.image.load(asset_path("Eau_1.png")),(32,42))
-    Eau_2 = pygame.transform.scale(pygame.image.load(asset_path("Eau_2.png")),(32,42))
-    Eau_3 = pygame.transform.scale(pygame.image.load(asset_path("Eau_3.png")),(32,42))
-    Herbe_1 = pygame.transform.scale(pygame.image.load(asset_path("Herbe_1.png")),(32,42))
-    Herbe_2 = pygame.transform.scale(pygame.image.load(asset_path("Herbe_2.png")),(32,42))
-    Herbe_3 = pygame.transform.scale(pygame.image.load(asset_path("Herbe_3.png")),(32,42))
-    Pierre_1 = pygame.transform.scale(pygame.image.load(asset_path("Pierre_1.png")),(32,42))
+    Eau_1 = pygame.transform.scale(pygame.image.load(asset_path("Eau_1.png")), (32, 42))
+    Eau_2 = pygame.transform.scale(pygame.image.load(asset_path("Eau_2.png")), (32, 42))
+    Eau_3 = pygame.transform.scale(pygame.image.load(asset_path("Eau_3.png")), (32, 42))
+    Herbe_1 = pygame.transform.scale(pygame.image.load(asset_path("Herbe_1.png")), (32, 42))
+    Herbe_2 = pygame.transform.scale(pygame.image.load(asset_path("Herbe_2.png")), (32, 42))
+    Herbe_3 = pygame.transform.scale(pygame.image.load(asset_path("Herbe_3.png")), (32, 42))
+    Pierre_1 = pygame.transform.scale(pygame.image.load(asset_path("Pierre_1.png")), (32, 42))
     IMAGES_LOADED = True
-except Exception as e:
-    # Créer des surfaces de couleur de remplacement
+except Exception:
     Eau_1 = pygame.Surface((32, 42))
     Eau_1.fill((0, 0, 255))
     Eau_2 = Eau_1
@@ -88,24 +83,23 @@ except Exception as e:
 
 # Dictionnaire des tuiles
 tuiles = {
-    'eau': Eau_1,
-    'herbe': Herbe_1,
-    'foret': Herbe_2,
-    'montagne': Pierre_1,
+    "eau": Eau_1,
+    "herbe": Herbe_1,
+    "foret": Herbe_2,
+    "montagne": Pierre_1,
 }
 
 terrain_variantes = {
-    'eau': [Eau_1, Eau_2, Eau_3],
-    'herbe': [Herbe_1],
-    'foret': [Herbe_2, Herbe_3],
-    'montagne': [Pierre_1],
+    "eau": [Eau_1, Eau_2, Eau_3],
+    "herbe": [Herbe_1],
+    "foret": [Herbe_2, Herbe_3],
+    "montagne": [Pierre_1],
 }
 
-
-#musique
+# musique
 menu_music = asset_path("menu-musique.mp3")
 
-#couleurs
+# couleurs
 BLANC = (255, 255, 255)
 NOIR = (0, 0, 0)
 VERT = (0, 255, 0)
@@ -115,60 +109,61 @@ JAUNE = (255, 255, 0)
 TRANSLUCENT_BLUE = (0, 80, 255, 100)
 HOVER_BLUE = (0, 140, 255, 220)
 SHADOW = (0, 0, 0)
+PANEL_BG = (6, 12, 22, 190)
+PANEL_BORDER = (210, 210, 210, 125)
 
-#polices
-FONT_TITLE = pygame.font.SysFont(None, 72)
-FONT_BUTTON = pygame.font.SysFont(None, 36)
-FONT_PANEL_TITLE = pygame.font.SysFont(None, 34)
-FONT_PANEL_TEXT = pygame.font.SysFont(None, 26)
-FONT_SMALL = pygame.font.SysFont(None, 22)
-
-PANEL_WIDTH = 340
-TURN_DURATION_MS = tours.TURN_DURATION_MS
-EXPAND_COST = {"wood": 8, "food": 4, "gold": 2}
-BUILDING_TERRAINS = {
-    "farm": {"herbe", "foret"},
-    "barracks": {"herbe", "foret", "montagne"},
-    "blacksmith": {"herbe", "montagne"},
-}
-BUILDING_LABELS = {
-    "farm": "Ferme",
-    "barracks": "Caserne",
-    "blacksmith": "Forge",
-}
-TERRAIN_LABELS = {
-    "herbe": "Plaine",
-    "foret": "Foret",
-    "montagne": "Montagne",
-    "eau": "Eau",
-}
 PLAYER_COLORS = [
-    (255, 214, 92),
-    (96, 190, 255),
-    (255, 120, 120),
-    (130, 235, 150),
-    (220, 150, 255),
+    (244, 210, 92),
+    (116, 180, 255),
+    (118, 224, 146),
+    (241, 130, 120),
 ]
 
-# --- Fonctions utilitaires pour les images UI ---
+# polices
+FONT_TITLE = pygame.font.SysFont(None, 72)
+FONT_BUTTON = pygame.font.SysFont(None, 36)
+FONT_HUD = pygame.font.SysFont(None, 30)
+FONT_SMALL = pygame.font.SysFont(None, 24)
+FONT_TINY = pygame.font.SysFont(None, 21)
+FONT_TILE = pygame.font.SysFont(None, 16, bold=True)
+STARTING_TERRITORY_RADIUS = 1
+STARTING_POSITION_SEPARATION = 12
+HUD_PADDING = 18
+HEADER_HEIGHT = 88
+FOOTER_HEIGHT = 88
+MAP_INSET = 12
+MAP_PAN_SPEED = 14
+SIDEBAR_GAP = 18
+SELECTED_PANEL_DROP = 56
+END_TURN_BUTTON_HEIGHT = 56
+END_TURN_BOTTOM_MARGIN = 16
+END_TURN_PANEL_GAP = 18
+TURN_DURATION_MS = 2 * 60 * 1000
+
+camera_pan_x = 0
+camera_pan_y = 0
+map_drag_active = False
+turn_timer_started_at = None
+
 
 def load_trimmed_image(path, min_alpha=25):
-    """Charge une image et retourne uniquement la partie visible (alpha > min_alpha)."""
-    path = asset_path(path)
-    if not os.path.exists(path):
+    """Charge une image et retourne uniquement la partie visible."""
+    full_path = asset_path(path)
+    if not os.path.exists(full_path):
         return None
-    image = pygame.image.load(path).convert_alpha()
+    image = pygame.image.load(full_path).convert_alpha()
     bounds = image.get_bounding_rect(min_alpha=min_alpha)
     if bounds.width > 0 and bounds.height > 0:
         return image.subsurface(bounds).copy()
     return image
 
+
 def load_menu_button_images(path):
-    """Détecte les régions de boutons dans le spritesheet et retourne un dict par action."""
-    path = asset_path(path)
-    if not os.path.exists(path):
+    """Detecte les regions de boutons dans le spritesheet et retourne un dict par action."""
+    full_path = asset_path(path)
+    if not os.path.exists(full_path):
         return {}
-    sheet = pygame.image.load(path).convert_alpha()
+    sheet = pygame.image.load(full_path).convert_alpha()
     mask = pygame.mask.from_surface(sheet, threshold=25)
     components = mask.connected_components()
     if not components:
@@ -179,9 +174,8 @@ def load_menu_button_images(path):
             for c in components
             if (c.get_bounding_rects()[0].width * c.get_bounding_rects()[0].height) >= 500
         ],
-        key=lambda r: (r.y, r.x)
+        key=lambda r: (r.y, r.x),
     )
-    # Le spritesheet courant a les deux dernières lignes inversées (Quit puis Options)
     actions = ["new_game", "multiplayer", "quit", "options"]
     images = {}
     for i, action in enumerate(actions):
@@ -194,12 +188,13 @@ def load_menu_button_images(path):
             images[action] = {"normal": normal, "hover": hover}
     return images
 
+
 def load_option_button_images(path):
-    """Charge les images des boutons d'options depuis le spritesheet (indices 4-7)."""
-    path = asset_path(path)
-    if not os.path.exists(path):
+    """Charge les images des boutons d'options depuis le spritesheet."""
+    full_path = asset_path(path)
+    if not os.path.exists(full_path):
         return {}
-    sheet = pygame.image.load(path).convert_alpha()
+    sheet = pygame.image.load(full_path).convert_alpha()
     mask = pygame.mask.from_surface(sheet, threshold=25)
     components = mask.connected_components()
     if not components:
@@ -210,15 +205,14 @@ def load_option_button_images(path):
             for c in components
             if (c.get_bounding_rects()[0].width * c.get_bounding_rects()[0].height) >= 500
         ],
-        key=lambda r: (r.y, r.x)
+        key=lambda r: (r.y, r.x),
     )
-    # rects[4]=1920x1080, rects[5]=1280x720, rects[6]=2560x1440, rects[7]=Back
     key_map = {4: "1920x1080", 5: "1280x720", 6: "2560x1440", 7: "back"}
     images = {}
     for idx, key in key_map.items():
         if idx < len(rects):
             images[key] = sheet.subsurface(rects[idx]).copy()
-    # Charge 1600x900 depuis son propre fichier
+
     path_1600 = asset_path("1600 x 900.png")
     if os.path.exists(path_1600):
         img_1600 = pygame.image.load(path_1600).convert_alpha()
@@ -231,22 +225,22 @@ def load_option_button_images(path):
                     for c in comps_1600
                     if (c.get_bounding_rects()[0].width * c.get_bounding_rects()[0].height) >= 500
                 ],
-                key=lambda r: r.y
+                key=lambda r: r.y,
             )
             if rects_1600:
                 images["1600x900"] = img_1600.subsurface(rects_1600[0]).copy()
     return images
 
+
 def scale_surface_to_fit(surface, max_width, max_height):
-    """Redimensionne une surface pour tenir dans max_width × max_height (haut et bas)."""
     w, h = surface.get_size()
     scale = min(max_width / w, max_height / h)
     new_w = max(1, int(w * scale))
     new_h = max(1, int(h * scale))
     return pygame.transform.smoothscale(surface, (new_w, new_h))
 
+
 def get_button_display_image(action, is_hover, win_size):
-    """Retourne l'image du bouton mise à l'échelle pour la taille de la fenêtre."""
     if not button_images or action not in button_images:
         return None
     win_w, win_h = win_size
@@ -256,33 +250,83 @@ def get_button_display_image(action, is_hover, win_size):
     img = button_images[action].get(key, button_images[action]["normal"])
     return scale_surface_to_fit(img, max_width, max_height)
 
+
 def get_option_button_background(key, max_width, max_height):
-    """Retourne l'image de fond du bouton d'option (style bouton menu)."""
     if option_button_images and key in option_button_images:
         bg = option_button_images[key]
         return pygame.transform.smoothscale(bg, (int(max_width), int(max_height)))
     if button_images and "new_game" in button_images:
-        # fallback visuel si une image option manque
         bg = button_images["new_game"]["normal"]
         return pygame.transform.smoothscale(bg, (int(max_width), int(max_height)))
     return None
 
+
 def draw_option_image_button(surface, rect, image, label=None):
-    """Dessine un bouton image dans le rect."""
     if image:
         img_rect = image.get_rect(center=rect.center)
         surface.blit(image, img_rect)
-    if label:
-        text_surf = FONT_BUTTON.render(label, True, BLANC)
-        shadow_surf = FONT_BUTTON.render(label, True, SHADOW)
-        text_rect = text_surf.get_rect(center=rect.center)
-        surface.blit(shadow_surf, (text_rect.x + 2, text_rect.y + 2))
-        surface.blit(text_surf, text_rect)
+
+
+def draw_panel_background(surface, rect, fill=PANEL_BG, border=PANEL_BORDER, radius=16):
+    panel = pygame.Surface(rect.size, pygame.SRCALPHA)
+    pygame.draw.rect(panel, fill, panel.get_rect(), border_radius=radius)
+    pygame.draw.rect(panel, border, panel.get_rect(), width=1, border_radius=radius)
+    surface.blit(panel, rect)
+    return rect
+
+
+def draw_info_panel(surface, texts, anchor, align="topleft", font=FONT_HUD):
+    if isinstance(texts, str):
+        texts = [texts]
+
+    rendered = [font.render(text, True, BLANC) for text in texts]
+    shadows = [font.render(text, True, SHADOW) for text in texts]
+
+    pad_x = 14
+    pad_y = 10
+    line_gap = 6
+    panel_width = max(surf.get_width() for surf in rendered) + pad_x * 2
+    panel_height = sum(surf.get_height() for surf in rendered) + pad_y * 2 + line_gap * (len(rendered) - 1)
+
+    panel = pygame.Surface((panel_width, panel_height), pygame.SRCALPHA)
+    pygame.draw.rect(panel, (6, 12, 22, 175), panel.get_rect(), border_radius=14)
+    pygame.draw.rect(panel, (210, 210, 210, 120), panel.get_rect(), width=1, border_radius=14)
+
+    rect = panel.get_rect(**{align: anchor})
+    surface.blit(panel, rect)
+
+    current_y = rect.y + pad_y
+    for shadow, text in zip(shadows, rendered):
+        text_rect = text.get_rect(x=rect.x + pad_x, y=current_y)
+        surface.blit(shadow, (text_rect.x + 2, text_rect.y + 2))
+        surface.blit(text, text_rect)
+        current_y += text.get_height() + line_gap
+
+    return rect
+
+
+def draw_timer_panel(surface, remaining_ms, midtop=None):
+    mins = remaining_ms // 60000
+    secs = (remaining_ms % 60000) // 1000
+    timer_text = f"{mins:02d}:{secs:02d}"
+    timer_surf = FONT_TIMER.render(timer_text, False, BLANC)
+    pad_x, pad_y = 14, 8
+    box_w = timer_surf.get_width() + pad_x * 2
+    box_h = timer_surf.get_height() + pad_y * 2
+    box_surf = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+    pygame.draw.rect(box_surf, (6, 12, 22, 190), (0, 0, box_w, box_h), border_radius=14)
+    pygame.draw.rect(box_surf, (210, 210, 210, 130), (0, 0, box_w, box_h), width=1, border_radius=14)
+
+    if midtop is None:
+        midtop = (surface.get_width() // 2, HUD_PADDING)
+    box_rect = box_surf.get_rect(midtop=midtop)
+    surface.blit(box_surf, box_rect)
+    timer_rect = timer_surf.get_rect(center=box_rect.center)
+    surface.blit(timer_surf, timer_rect)
+
 
 def update_menu_layout(win):
-    """Met à jour le layout adaptatif du menu. Retourne (title_surf, title_rect)."""
     win_w, win_h = win.get_size()
-    # Titre bannière
     title_w = min(1305, win_w * 0.72)
     title_h = min(252, win_h * 0.234)
     title_y = max(8, win_h * 0.01)
@@ -291,7 +335,7 @@ def update_menu_layout(win):
     else:
         title_surf = FONT_TITLE.render("Timeless Empire", True, BLANC)
     title_rect = title_surf.get_rect(centerx=win_w // 2, top=int(title_y))
-    # Boutons menu
+
     sample_img = get_button_display_image("new_game", False, (win_w, win_h))
     btn_h_actual = sample_img.get_height() if sample_img else 70
     gap = max(18, win_h * 0.02)
@@ -306,51 +350,40 @@ def update_menu_layout(win):
         btn.rect.center = (win_w // 2, btn.center_y)
     return title_surf, title_rect
 
-# Chargement des images UI
+
 title_banner = load_trimmed_image("Banière_titre.png", min_alpha=25)
 button_images = load_menu_button_images("Boutons_menu.png")
 option_button_images = load_option_button_images("Boutons_menu.png")
 
-# création d'une classe Hexagone pour créer la map
 
-# Hexagone : Tuile carte hex (layout "odd-r")
 class Hexagone:
     def __init__(self, q, r, type_terrain, tuile_surface=None):
-        self.q = q                           # Coord q (cube coords)
-        self.r = r                           # Coord r
-        self.type_terrain = type_terrain     # Type ('herbe', 'eau'...)
-        self.tuile = tuile_surface if tuile_surface is not None else tuiles[type_terrain]   # Image associée
-        self.selection_lift = 0.0           # Animation visuelle de sélection
-        self.target_lift = 0.0              # Cible d'animation (0.0 ou 1.0)
-        self.owner = None
-        self.building = None
-    
+        self.q = q
+        self.r = r
+        self.type_terrain = type_terrain
+        self.tuile = tuile_surface if tuile_surface is not None else tuiles[type_terrain]
+        self.selection_lift = 0.0
+        self.target_lift = 0.0
+
     def get_pixel_pos(self, size=32, vertical_spacing=42):
-        """Retourne la position en pixels de l'hexagone."""
-        # Layout hexagonal "odd-r" - lignes impaires décalées
-        # Espacement horizontal: 100% de la largeur
         x = self.q * size * 1.0
-        # Décalage pour lignes impaires
         if self.r % 2 == 1:
             x += size * 0.5
-        # Espacement vertical: 1/2 de la hauteur
         y = self.r * vertical_spacing * 0.5
         return int(x), int(y)
 
 
 class Carte:
     def __init__(self, largeur, hauteur):
-        """Crée une carte hexagonale avec des tuiles aléatoires."""
         self.largeur = largeur
         self.hauteur = hauteur
         self.hexagones = []
-        self.hex_by_coord = {}
+        self.hex_lookup = {}
         self.selected_hex = None
         self._mask_cache = {}
         self.generer_carte()
 
     def update_selection_animation(self):
-        """Anime en douceur le relèvement des hexagones sélectionnés."""
         for hex_obj in self.hexagones:
             delta = hex_obj.target_lift - hex_obj.selection_lift
             if abs(delta) < 0.01:
@@ -359,7 +392,6 @@ class Carte:
                 hex_obj.selection_lift += delta * 0.22
 
     def select_hex(self, hex_obj):
-        """Sélectionne un hexagone et déclenche son animation de relèvement."""
         if self.selected_hex is not None and self.selected_hex is not hex_obj:
             self.selected_hex.target_lift = 0.0
 
@@ -369,33 +401,28 @@ class Carte:
 
         self.selected_hex = hex_obj
         self.selected_hex.target_lift = 1.0
-    
+
     def generer_carte(self):
-        """Génère une carte en grands amas organiques avec moins d'eau."""
         self.hexagones.clear()
-        self.hex_by_coord.clear()
+        self.hex_lookup.clear()
 
-        # Poids de base (proportion de chaque terrain dans le pool de germes)
-        terrain_pool = ['herbe'] * 45 + ['foret'] * 28 + ['montagne'] * 18 + ['eau'] * 9
-
-        # --- Étape 1: Germes Voronoi répartis aléatoirement ---
-        # ~1 germe pour 85 cases → amas de taille ~85 cases chacun
+        terrain_pool = ["herbe"] * 45 + ["foret"] * 28 + ["montagne"] * 18 + ["eau"] * 9
         n_seeds = max(28, (self.largeur * self.hauteur) // 10)
         seeds = [
-            (random.randint(0, self.largeur - 1),
-             random.randint(0, self.hauteur - 1),
-             random.choice(terrain_pool))
+            (
+                random.randint(0, self.largeur - 1),
+                random.randint(0, self.hauteur - 1),
+                random.choice(terrain_pool),
+            )
             for _ in range(n_seeds)
         ]
 
-        # --- Étape 2: Attribution Voronoi avec bruit gaussien sur la distance ---
-        # Le bruit rend les frontières irrégulières et organiques (pas des droites)
         noise_scale = (self.largeur + self.hauteur) / 28.0
         terrain_grid = {}
         for r in range(self.hauteur):
             for q in range(self.largeur):
-                best_type = 'herbe'
-                min_dist = float('inf')
+                best_type = "herbe"
+                min_dist = float("inf")
                 for sq, sr, st in seeds:
                     d = ((q - sq) ** 2 + (r - sr) ** 2) ** 0.5
                     d += random.gauss(0, noise_scale)
@@ -404,9 +431,6 @@ class Carte:
                         best_type = st
                 terrain_grid[(q, r)] = best_type
 
-        # --- Étape 3: Lissage cellulaire (2 passes) ---
-        # Élimine les cellules seules et adoucit les transitions trop abruptes.
-        # Seulement si 5 voisins sur 6 sont d'un même type → conversion douce.
         for _ in range(2):
             new_grid = {}
             for r in range(self.hauteur):
@@ -425,22 +449,19 @@ class Carte:
                         new_grid[(q, r)] = terrain_grid[(q, r)]
             terrain_grid = new_grid
 
-        # --- Étape 4: Création des hexagones avec variantes visuelles ---
         for r in range(self.hauteur):
             for q in range(self.largeur):
                 type_terrain = terrain_grid[(q, r)]
                 tuile_surface = self._choose_tile_surface(type_terrain)
                 hex_obj = Hexagone(q, r, type_terrain, tuile_surface=tuile_surface)
                 self.hexagones.append(hex_obj)
-                self.hex_by_coord[(q, r)] = hex_obj
+                self.hex_lookup[(q, r)] = hex_obj
 
     def _choose_tile_surface(self, type_terrain):
-        """Choisit une variante visuelle d'une famille de terrain."""
         variantes = terrain_variantes.get(type_terrain, [tuiles[type_terrain]])
         return random.choice(variantes)
 
     def _get_existing_neighbors(self, q, r, terrain_grid):
-        """Retourne les types des voisins déjà générés (layout odd-r)."""
         if r % 2 == 0:
             offsets = [(-1, 0), (1, 0), (0, -1), (-1, -1), (0, 1), (-1, 1)]
         else:
@@ -454,13 +475,14 @@ class Carte:
         return found
 
     def get_hex(self, q, r):
-        return self.hex_by_coord.get((q, r))
+        return self.hex_lookup.get((q, r))
 
     def get_neighbors(self, hex_obj):
         if hex_obj.r % 2 == 0:
             offsets = [(-1, 0), (1, 0), (0, -1), (-1, -1), (0, 1), (-1, 1)]
         else:
             offsets = [(-1, 0), (1, 0), (1, -1), (0, -1), (1, 1), (0, 1)]
+
         neighbors = []
         for dq, dr in offsets:
             neighbor = self.get_hex(hex_obj.q + dq, hex_obj.r + dr)
@@ -468,60 +490,132 @@ class Carte:
                 neighbors.append(neighbor)
         return neighbors
 
-    def get_bounds(self):
+    def get_hexes_in_radius(self, center_hex, radius):
+        visited = {(center_hex.q, center_hex.r)}
+        frontier = [center_hex]
+        results = [center_hex]
+
+        for _ in range(radius):
+            next_frontier = []
+            for hex_obj in frontier:
+                for neighbor in self.get_neighbors(hex_obj):
+                    key = (neighbor.q, neighbor.r)
+                    if key not in visited:
+                        visited.add(key)
+                        next_frontier.append(neighbor)
+                        results.append(neighbor)
+            frontier = next_frontier
+
+        return results
+
+    def get_world_bounds(self):
         if not self.hexagones:
             return pygame.Rect(0, 0, 0, 0)
-        min_x = min(h.get_pixel_pos()[0] for h in self.hexagones)
-        min_y = min(h.get_pixel_pos()[1] for h in self.hexagones)
-        max_x = max(h.get_pixel_pos()[0] + h.tuile.get_width() for h in self.hexagones)
-        max_y = max(h.get_pixel_pos()[1] + h.tuile.get_height() for h in self.hexagones)
-        return pygame.Rect(min_x, min_y, max_x - min_x, max_y - min_y)
-    
-    def dessiner(self, surface, offset_x=0, offset_y=0):
-        """Dessine tous les hexagones sur la surface en ordre de profondeur correct."""
-        self.update_selection_animation()
 
-        # Trier les hexagones: d'abord par y (position verticale), puis par x (position horizontale)
-        # Cela affiche de bas en haut, et pour une même hauteur, de gauche à droite
+        left = min(hex_obj.get_pixel_pos()[0] for hex_obj in self.hexagones)
+        top = min(hex_obj.get_pixel_pos()[1] for hex_obj in self.hexagones)
+        right = max(hex_obj.get_pixel_pos()[0] + hex_obj.tuile.get_width() for hex_obj in self.hexagones)
+        bottom = max(hex_obj.get_pixel_pos()[1] + hex_obj.tuile.get_height() for hex_obj in self.hexagones)
+        return pygame.Rect(left, top, right - left, bottom - top)
+
+    def dessiner(self, surface, territory_lookup=None, placed_buildings=None, offset_x=0, offset_y=0):
+        self.update_selection_animation()
         hexagones_tries = sorted(self.hexagones, key=lambda h: (h.get_pixel_pos()[1], h.get_pixel_pos()[0]))
-        
+
         for hex_obj in hexagones_tries:
             x, y = hex_obj.get_pixel_pos()
             x += offset_x
             y += offset_y
             y -= int(hex_obj.selection_lift * 10)
-            
-            # Vérifier que l'hexagone est dans les limites de la surface
             if -50 < x < surface.get_width() + 50 and -50 < y < surface.get_height() + 50:
                 try:
                     surface.blit(hex_obj.tuile, (x, y))
-                    if hex_obj.owner is not None:
-                        owner_color = getattr(hex_obj.owner, "color", JAUNE)
-                        indicator = (x + hex_obj.tuile.get_width() // 2, y + max(10, int(hex_obj.tuile.get_height() * 0.24)))
-                        pygame.draw.circle(surface, (0, 0, 0), indicator, 10)
-                        pygame.draw.circle(surface, owner_color, indicator, 7)
-                    if hex_obj.building:
-                        badge_rect = pygame.Rect(0, 0, 64, 20)
-                        badge_rect.midbottom = (x + hex_obj.tuile.get_width() // 2, y + int(hex_obj.tuile.get_height() * 0.62))
-                        pygame.draw.rect(surface, (10, 16, 28), badge_rect, border_radius=10)
-                        pygame.draw.rect(surface, (215, 225, 255), badge_rect, width=1, border_radius=10)
-                        badge_text = FONT_SMALL.render(BUILDING_LABELS.get(hex_obj.building, hex_obj.building), True, BLANC)
-                        badge_text = scale_surface_to_fit(badge_text, badge_rect.width - 8, badge_rect.height - 4)
-                        badge_text_rect = badge_text.get_rect(center=badge_rect.center)
-                        surface.blit(badge_text, badge_text_rect)
-                except Exception as e:
+                    if territory_lookup is not None:
+                        owner_player = territory_lookup.get((hex_obj.q, hex_obj.r))
+                        if owner_player is not None:
+                            self.draw_territory_overlay(surface, hex_obj, x, y, owner_player.color)
+                    if placed_buildings is not None:
+                        building_info = placed_buildings.get((hex_obj.q, hex_obj.r))
+                        if building_info is not None:
+                            self.draw_building_marker(surface, hex_obj, x, y, building_info)
+                except Exception:
                     pass
 
+    def draw_territory_overlay(self, surface, hex_obj, x, y, color):
+        if color is None:
+            return
+
+        tile = hex_obj.tuile
+        mask = self._get_mask_for_tile(tile)
+        overlay_key = (id(tile), "territory", color)
+
+        if overlay_key not in self._mask_cache:
+            overlay = pygame.Surface(tile.get_size(), pygame.SRCALPHA)
+            w, h = tile.get_size()
+            for px in range(w):
+                for py in range(h):
+                    if mask.get_at((px, py)):
+                        overlay.set_at((px, py), (*color, 58))
+            self._mask_cache[overlay_key] = overlay
+
+        overlay = self._mask_cache[overlay_key]
+        surface.blit(overlay, (x, y))
+
+    def draw_building_marker(self, surface, hex_obj, x, y, building_info):
+        owner_player, placed_building = building_info
+        badge_text = tours.get_building_short(placed_building.building)
+        badge_color = owner_player.color if owner_player and owner_player.color is not None else (110, 110, 110)
+        text_surf = FONT_TILE.render(badge_text, True, NOIR)
+        badge_w = max(22, text_surf.get_width() + 10)
+        badge_h = text_surf.get_height() + 6
+        badge_rect = pygame.Rect(0, 0, badge_w, badge_h)
+        badge_rect.center = (x + hex_obj.tuile.get_width() // 2, y + int(hex_obj.tuile.get_height() * 0.7))
+
+        badge = pygame.Surface((badge_w, badge_h), pygame.SRCALPHA)
+        pygame.draw.rect(badge, (*badge_color, 220), badge.get_rect(), border_radius=8)
+        pygame.draw.rect(badge, (0, 0, 0, 150), badge.get_rect(), width=1, border_radius=8)
+        surface.blit(badge, badge_rect)
+        text_rect = text_surf.get_rect(center=badge_rect.center)
+        surface.blit(text_surf, text_rect)
+
+    def draw_buildable_overlay(self, surface, hex_obj, x, y):
+        tile = hex_obj.tuile
+        mask = self._get_mask_for_tile(tile)
+        w, h = tile.get_size()
+        cut_y = int(h * 0.62)
+
+        tile_key = id(tile)
+        overlay_key = (tile_key, "buildable_overlay62")
+        if overlay_key not in self._mask_cache:
+            top_overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+            for cx in range(w):
+                for yy in range(cut_y):
+                    if mask.get_at((cx, yy)):
+                        top_overlay.set_at((cx, yy), (255, 255, 0, 80))
+            self._mask_cache[overlay_key] = top_overlay
+
+        top_overlay = self._mask_cache[overlay_key]
+        surface.blit(top_overlay, (x, y))
+
+        outline_key = (tile_key, "buildable_outline62")
+        if outline_key not in self._mask_cache:
+            top_mask = pygame.mask.from_surface(top_overlay, threshold=1)
+            self._mask_cache[outline_key] = top_mask.outline()
+
+        outline = self._mask_cache[outline_key]
+        if len(outline) > 1:
+            max_oy = max(oy for _, oy in outline)
+            pts = [(x + ox, y + oy) for ox, oy in outline if oy < max_oy - 1]
+            if len(pts) > 1:
+                pygame.draw.lines(surface, (255, 255, 0), False, pts, 2)
+
     def _get_mask_for_tile(self, tile_surface):
-        """Retourne (et met en cache) le masque alpha d'une tuile."""
         key = id(tile_surface)
         if key not in self._mask_cache:
             self._mask_cache[key] = pygame.mask.from_surface(tile_surface, threshold=10)
         return self._mask_cache[key]
 
     def get_hex_at_pixel(self, px, py, offset_x=0, offset_y=0):
-        """Trouve l'hexagone sous la souris en testant le masque alpha de la tuile."""
-        # Même tri que le rendu, puis inversé pour récupérer l'élément visuellement au-dessus
         hexagones_tries = sorted(self.hexagones, key=lambda h: (h.get_pixel_pos()[1], h.get_pixel_pos()[0]))
         for hex_obj in reversed(hexagones_tries):
             x, y = hex_obj.get_pixel_pos()
@@ -540,7 +634,6 @@ class Carte:
         return None
 
     def draw_hex_highlight(self, surface, hex_obj, offset_x=0, offset_y=0):
-        """Dessine une surbrillance sur la face supérieure de l'hexagone ciblé."""
         if hex_obj is None:
             return
         x, y = hex_obj.get_pixel_pos()
@@ -550,14 +643,11 @@ class Carte:
         tile = hex_obj.tuile
         mask = self._get_mask_for_tile(tile)
 
-        # Surbrillance de la face supérieure :
-        # - Remplissage colonne par colonne jusqu'à cut_y
-        # - Outline dessiné SANS le bord inférieur (pour éviter le trait horizontal parasite)
         w, h = tile.get_size()
         cut_y = int(h * 0.62)
 
         tile_key = id(tile)
-        overlay_key = (tile_key, 'overlay62')
+        overlay_key = (tile_key, "overlay62")
         if overlay_key not in self._mask_cache:
             top_overlay = pygame.Surface((w, h), pygame.SRCALPHA)
             for cx in range(w):
@@ -569,37 +659,32 @@ class Carte:
         top_overlay = self._mask_cache[overlay_key]
         surface.blit(top_overlay, (x, y))
 
-        # Outline : on récupère les points du contour, puis on sépare les deux arcs
-        # (gauche→sommet→droite) pour ne JAMAIS relier le bas horizontalement.
         top_mask = pygame.mask.from_surface(top_overlay, threshold=1)
         outline = top_mask.outline()
         if len(outline) > 1:
             max_oy = max(oy for _, oy in outline)
-            # Garder uniquement les points qui ne sont PAS sur la ligne inférieure plate
             pts = [(x + ox, y + oy) for ox, oy in outline if oy < max_oy - 1]
             if len(pts) > 1:
                 pygame.draw.lines(surface, (255, 255, 0), False, pts, 2)
 
-# Classe Button : Boutons interactifs (hover, shadow, click)
+
 class Button:
-    def __init__(self,text,center_y,action):
+    def __init__(self, text, center_y, action):
         self.text = text
         self.center_y = center_y
-        self.action = action  # Action déclenchée au clic ("new_game", "multiplayer"...)
+        self.action = action
         self.widtht, self.height = 320, 70
-        self.rect = pygame.Rect((0,0,self.widtht,self.height))
-        self.rect.center = (0,self.center_y)  # Center Y fixe, X dynamique
-    
-    def draw(self,win,mouse_pos):
+        self.rect = pygame.Rect((0, 0, self.widtht, self.height))
+        self.rect.center = (0, self.center_y)
+
+    def draw(self, win, mouse_pos):
         self.rect.center = (win.get_width() // 2, self.center_y)
         is_hover = self.rect.collidepoint(mouse_pos)
-        # Utilise l'image si disponible
         img = get_button_display_image(self.action, is_hover, win.get_size())
         if img:
             img_rect = img.get_rect(center=self.rect.center)
             win.blit(img, img_rect)
             return
-        # Fallback : rectangle coloré avec texte
         color = HOVER_BLUE if is_hover else TRANSLUCENT_BLUE
         button_surface = pygame.Surface((self.widtht, self.height), pygame.SRCALPHA)
         pygame.draw.rect(button_surface, color, (0, 0, self.widtht, self.height), border_radius=16)
@@ -610,10 +695,9 @@ class Button:
         win.blit(shadow, (text_rect.x + 2, text_rect.y + 2))
         win.blit(text_surf, text_rect)
 
-    def is_clicked(self,mouse_pos, mouse_pressed):
+    def is_clicked(self, mouse_pos, mouse_pressed):
         return self.rect.collidepoint(mouse_pos) and mouse_pressed[0]
-    
-# création des boutons du menu principal
+
 
 boutons_menu = [
     Button("New Game", 400, "new_game"),
@@ -623,430 +707,27 @@ boutons_menu = [
 ]
 
 
-def set_status(message, duration_ms=3200):
-    global status_message, status_message_until
-    status_message = message
-    status_message_until = pygame.time.get_ticks() + duration_ms
-
-
-def get_current_player():
-    if not turn_manager:
-        return None
-    try:
-        return turn_manager.current_player()
-    except RuntimeError:
-        return None
-
-
-def get_map_offsets(win, current_map):
-    if not current_map:
-        return 0, 0
-    bounds = current_map.get_bounds()
-    available_w = max(260, win.get_width() - PANEL_WIDTH - 24)
-    available_h = max(240, win.get_height() - 24)
-    offset_x = 12 + (available_w - bounds.width) // 2 - bounds.x
-    offset_y = 12 + (available_h - bounds.height) // 2 - bounds.y
-    return offset_x, offset_y
-
-
-def claim_hex(hex_obj, player):
-    if hex_obj is None:
-        return
-    hex_obj.owner = player
-
-
-def assign_starting_territories(current_map, current_players):
-    if not current_map or not current_players:
-        return
-
-    land_hexes = [hex_obj for hex_obj in current_map.hexagones if hex_obj.type_terrain != "eau"]
-    chosen_spawns = []
-
-    def score_spawn(hex_obj, target_q, target_r):
-        distance = abs(hex_obj.q - target_q) + abs(hex_obj.r - target_r)
-        if not chosen_spawns:
-            return distance
-        min_spacing = min(abs(hex_obj.q - other.q) + abs(hex_obj.r - other.r) for other in chosen_spawns)
-        spacing_penalty = max(0, 14 - min_spacing) * 12
-        return distance + spacing_penalty
-
-    for idx, player in enumerate(current_players):
-        target_q = int((idx + 1) * current_map.largeur / (len(current_players) + 1))
-        target_r = current_map.hauteur // 2 + (-7 if idx % 2 == 0 else 7)
-        available_hexes = [hex_obj for hex_obj in land_hexes if hex_obj not in chosen_spawns]
-        spawn_hex = min(available_hexes, key=lambda hex_obj: score_spawn(hex_obj, target_q, target_r))
-        chosen_spawns.append(spawn_hex)
-        player.home_hex = spawn_hex
-        claim_hex(spawn_hex, player)
-
-        claimed_neighbors = 0
-        for neighbor in current_map.get_neighbors(spawn_hex):
-            if neighbor.type_terrain == "eau" or neighbor.owner is not None:
-                continue
-            claim_hex(neighbor, player)
-            claimed_neighbors += 1
-            if claimed_neighbors >= 3:
-                break
-
-        spawn_hex.building = "farm"
-        if "farm" not in player.buildings:
-            player.build("farm", free=True)
-
-
-def setup_players(current_players):
-    for idx, player in enumerate(current_players):
-        player.color = PLAYER_COLORS[idx % len(PLAYER_COLORS)]
-        player.buildings = []
-        player.trapped_buildings.clear()
-        player.home_hex = None
-        player.grant_starting_resources()
-
-
-def start_session(current_players, next_game_state):
-    global players, turn_manager, carte, game_state, current_player_resources
-    players = current_players
-    setup_players(players)
-    turn_manager = tours.TurnManager(players)
-    carte = Carte(22, 18)
-    assign_starting_territories(carte, players)
-    game_state = next_game_state
-    current_player_resources = turn_manager.current_player().resources
-    begin_turn(f"Tour de {turn_manager.current_player().name}. Choisissez une carte.")
-
-
-def begin_turn(message=None):
-    global current_player_resources, turn_started_at, current_turn_cards
-    player = get_current_player()
-    if player is None:
-        return
-    current_player_resources = player.resources
-    turn_started_at = pygame.time.get_ticks()
-    current_turn_cards = tours.generate_cards()
-    if message is None:
-        message = f"Tour de {player.name}. Choisissez une carte."
-    set_status(message)
-
-
-def choose_card(card_index):
-    global current_turn_cards, current_player_resources
-    player = get_current_player()
-    if player is None or not current_turn_cards or not (0 <= card_index < len(current_turn_cards)):
-        return
-    card_type, card = current_turn_cards[card_index]
-    tours.apply_card(player, card_type, card)
-    current_turn_cards = None
-    current_player_resources = player.resources
-    set_status(f"{player.name} choisit : {card['name']}")
-
-
-def finish_current_turn(auto=False):
-    global current_player_resources
-    player = get_current_player()
-    if player is None or not turn_manager:
-        return
-    if current_turn_cards:
-        if auto:
-            choose_card(random.randrange(len(current_turn_cards)))
-        else:
-            set_status("Choisissez d'abord une carte.")
-            return
-    turn_manager.player_finished(player)
-    current_player_resources = turn_manager.current_player().resources
-    begin_turn(f"Nouveau tour : {turn_manager.current_player().name}")
-
-
-def has_adjacent_owned_tile(current_map, player, target_hex):
-    return any(neighbor.owner is player for neighbor in current_map.get_neighbors(target_hex))
-
-
-def can_expand_to_hex(player, target_hex):
-    if player is None or target_hex is None:
-        return False, "Case invalide"
-    if target_hex.type_terrain == "eau":
-        return False, "Impossible sur l'eau"
-    if target_hex.owner is player:
-        return False, "Territoire deja a vous"
-    if target_hex.owner is not None:
-        return False, "Territoire deja occupe"
-    if not has_adjacent_owned_tile(carte, player, target_hex):
-        return False, "Besoin d'une case voisine"
-    if not player.can_afford(EXPAND_COST):
-        return False, "Ressources insuffisantes"
-    return True, ""
-
-
-def expand_selected_hex():
-    player = get_current_player()
-    selected_hex = carte.selected_hex if carte else None
-    ok, reason = can_expand_to_hex(player, selected_hex)
-    if not ok:
-        set_status(reason)
-        return
-    player.spend_resources(EXPAND_COST)
-    selected_hex.owner = player
-    set_status(f"{player.name} etend son territoire.")
-
-
-def can_build_on_hex(player, target_hex, building):
-    if player is None or target_hex is None:
-        return False, "Selectionnez une case"
-    if target_hex.owner is not player:
-        return False, "Case hors territoire"
-    if target_hex.type_terrain == "eau":
-        return False, "Impossible sur l'eau"
-    if target_hex.building is not None:
-        return False, "Batiment deja present"
-    if building not in turn_manager.available_buildings:
-        return False, "Batiment non debloque"
-    if target_hex.type_terrain not in BUILDING_TERRAINS.get(building, set()):
-        return False, "Terrain incompatible"
-    if not player.can_afford(tours.BUILDING_COSTS[building]):
-        return False, "Ressources insuffisantes"
-    return True, ""
-
-
-def build_on_selected_hex(building):
-    player = get_current_player()
-    selected_hex = carte.selected_hex if carte else None
-    ok, reason = can_build_on_hex(player, selected_hex, building)
-    if not ok:
-        set_status(reason)
-        return
-    if player.build(building):
-        selected_hex.building = building
-        set_status(f"{BUILDING_LABELS.get(building, building)} construit.")
-
-
-def get_turn_remaining_ms():
-    if turn_started_at is None:
-        return TURN_DURATION_MS
-    return max(0, TURN_DURATION_MS - (pygame.time.get_ticks() - turn_started_at))
-
-
-def draw_button(surface, rect, label, mouse_pos, enabled=True, accent=(75, 112, 210)):
-    hovered = rect.collidepoint(mouse_pos)
-    base_color = accent if enabled else (70, 70, 82)
-    hover_color = tuple(min(255, c + 28) for c in base_color)
-    pygame.draw.rect(surface, hover_color if hovered and enabled else base_color, rect, border_radius=16)
-    pygame.draw.rect(surface, (18, 24, 44), rect, width=2, border_radius=16)
-    text_color = BLANC if enabled else (185, 185, 195)
-    text = FONT_BUTTON.render(label, True, text_color)
-    text_rect = text.get_rect(center=rect.center)
-    surface.blit(text, text_rect)
-
-
-def build_game_ui_layout(win):
-    win_w, win_h = win.get_size()
-    panel_rect = pygame.Rect(win_w - PANEL_WIDTH, 0, PANEL_WIDTH, win_h)
-    end_turn_rect = pygame.Rect(panel_rect.x + 20, panel_rect.bottom - 72, panel_rect.width - 40, 50)
-    action_buttons = []
-
-    selected_hex = carte.selected_hex if carte else None
-    current_player = get_current_player()
-    action_y = panel_rect.y + 360
-    button_w = panel_rect.width - 40
-    button_h = 42
-    gap = 10
-
-    if selected_hex is not None and current_turn_cards is None:
-        can_expand, _ = can_expand_to_hex(current_player, selected_hex)
-        action_buttons.append({
-            "id": "expand",
-            "label": "Revendiquer (8B/4N/2O)",
-            "rect": pygame.Rect(panel_rect.x + 20, action_y, button_w, button_h),
-            "enabled": can_expand,
-        })
-        action_y += button_h + gap
-
-        for building in turn_manager.available_buildings:
-            enabled, _ = can_build_on_hex(current_player, selected_hex, building)
-            cost = tours.BUILDING_COSTS.get(building, {})
-            cost_text = "/".join(
-                f"{amount}{key[0].upper()}" for key, amount in cost.items() if amount > 0
-            ) or "Gratuit"
-            action_buttons.append({
-                "id": f"build:{building}",
-                "label": f"{BUILDING_LABELS.get(building, building)} ({cost_text})",
-                "rect": pygame.Rect(panel_rect.x + 20, action_y, button_w, button_h),
-                "enabled": enabled,
-            })
-            action_y += button_h + gap
-
-    card_buttons = []
-    card_panel = None
-    if current_turn_cards:
-        modal_w = min(860, max(560, win_w - PANEL_WIDTH - 60))
-        modal_h = 250
-        modal_x = max(20, (win_w - PANEL_WIDTH - modal_w) // 2)
-        card_panel = pygame.Rect(modal_x, 36, modal_w, modal_h)
-        card_w = (modal_w - 60) // 3
-        for idx, _card in enumerate(current_turn_cards):
-            rect = pygame.Rect(card_panel.x + 15 + idx * (card_w + 15), card_panel.y + 70, card_w, 150)
-            card_buttons.append({"id": idx, "rect": rect})
-
-    return {
-        "panel_rect": panel_rect,
-        "end_turn_rect": end_turn_rect,
-        "action_buttons": action_buttons,
-        "card_panel": card_panel,
-        "card_buttons": card_buttons,
-    }
-
-
-def draw_game_ui(surface, layout, mouse_pos):
-    panel_rect = layout["panel_rect"]
-    pygame.draw.rect(surface, (10, 14, 24), panel_rect)
-    pygame.draw.rect(surface, (88, 126, 210), panel_rect, width=2)
-
-    player = get_current_player()
-    player_name = player.name if player else "Aucun joueur"
-    title = FONT_PANEL_TITLE.render(player_name, True, BLANC)
-    surface.blit(title, (panel_rect.x + 18, 16))
-
-    remaining_ms = get_turn_remaining_ms()
-    mins = remaining_ms // 60000
-    secs = (remaining_ms % 60000) // 1000
-    timer = FONT_PANEL_TEXT.render(f"Temps restant : {mins:02d}:{secs:02d}", True, (255, 232, 160))
-    surface.blit(timer, (panel_rect.x + 18, 48))
-
-    if turn_manager:
-        info_lines = [
-            f"Tour : {turn_manager.turn_number + 1}",
-            f"Periode : {turn_manager.period}",
-            f"Batiments : {', '.join(BUILDING_LABELS.get(b, b) for b in turn_manager.available_buildings)}",
-        ]
-        for idx, line in enumerate(info_lines):
-            text = FONT_SMALL.render(line, True, (205, 218, 255))
-            surface.blit(text, (panel_rect.x + 18, 80 + idx * 22))
-
-    ressources.draw_resources_overlay(
-        surface,
-        current_player_resources,
-        area=pygame.Rect(panel_rect.x + 16, 150, panel_rect.width - 32, 150),
-        title="Ressources",
-    )
-
-    selected_hex = carte.selected_hex if carte else None
-    info_top = 318
-    info_title = FONT_PANEL_TITLE.render("Case selectionnee", True, BLANC)
-    surface.blit(info_title, (panel_rect.x + 18, info_top))
-
-    if selected_hex is None:
-        help_lines = [
-            "Cliquez sur une case pour voir ses details.",
-            "Choisissez une carte au debut du tour,",
-            "puis etendez votre territoire ou construisez.",
-        ]
-        for idx, line in enumerate(help_lines):
-            text = FONT_SMALL.render(line, True, (200, 208, 230))
-            surface.blit(text, (panel_rect.x + 18, info_top + 36 + idx * 22))
-    else:
-        owner_name = selected_hex.owner.name if selected_hex.owner else "Neutre"
-        building_name = BUILDING_LABELS.get(selected_hex.building, "Aucun")
-        if selected_hex.building is None:
-            building_name = "Aucun"
-        details = [
-            f"Coordonnees : ({selected_hex.q}, {selected_hex.r})",
-            f"Terrain : {TERRAIN_LABELS.get(selected_hex.type_terrain, selected_hex.type_terrain)}",
-            f"Proprietaire : {owner_name}",
-            f"Batiment : {building_name}",
-        ]
-        for idx, line in enumerate(details):
-            text = FONT_SMALL.render(line, True, (218, 225, 245))
-            surface.blit(text, (panel_rect.x + 18, info_top + 36 + idx * 22))
-
-    for button in layout["action_buttons"]:
-        draw_button(surface, button["rect"], button["label"], mouse_pos, enabled=button["enabled"])
-
-    draw_button(surface, layout["end_turn_rect"], "Fin du tour", mouse_pos, enabled=True, accent=(0, 150, 82))
-
-    if current_turn_cards and layout["card_panel"] is not None:
-        shade = pygame.Surface((surface.get_width(), surface.get_height()), pygame.SRCALPHA)
-        shade.fill((0, 0, 0, 110))
-        surface.blit(shade, (0, 0))
-
-        modal = layout["card_panel"]
-        pygame.draw.rect(surface, (14, 20, 36), modal, border_radius=24)
-        pygame.draw.rect(surface, (110, 150, 240), modal, width=2, border_radius=24)
-        title = FONT_PANEL_TITLE.render("Choisissez une carte", True, BLANC)
-        subtitle = FONT_SMALL.render("Chaque debut de tour commence par un choix de carte.", True, (205, 215, 240))
-        surface.blit(title, (modal.x + 18, modal.y + 14))
-        surface.blit(subtitle, (modal.x + 18, modal.y + 44))
-
-        for idx, button in enumerate(layout["card_buttons"]):
-            rect = button["rect"]
-            hovered = rect.collidepoint(mouse_pos)
-            pygame.draw.rect(surface, (42, 62, 118) if hovered else (24, 34, 60), rect, border_radius=18)
-            pygame.draw.rect(surface, (130, 175, 255), rect, width=2, border_radius=18)
-
-            card_type, card = current_turn_cards[idx]
-            card_name = FONT_PANEL_TEXT.render(card["name"], True, BLANC)
-            desc = tours.describe_card(card_type, card)
-            card_desc = FONT_SMALL.render(desc, True, (215, 225, 245))
-            card_desc = scale_surface_to_fit(card_desc, rect.width - 24, 32)
-            surface.blit(card_name, (rect.x + 12, rect.y + 12))
-            surface.blit(card_desc, (rect.x + 12, rect.y + 50))
-
-            pick = FONT_SMALL.render("Cliquer pour choisir", True, (255, 229, 160))
-            surface.blit(pick, (rect.x + 12, rect.bottom - 28))
-
-    if pygame.time.get_ticks() < status_message_until:
-        status_rect = pygame.Rect(18, surface.get_height() - 46, max(340, min(720, surface.get_width() - PANEL_WIDTH - 36)), 30)
-        pygame.draw.rect(surface, (8, 12, 22), status_rect, border_radius=12)
-        pygame.draw.rect(surface, (100, 145, 235), status_rect, width=1, border_radius=12)
-        status_text = FONT_SMALL.render(status_message, True, (235, 240, 255))
-        surface.blit(status_text, (status_rect.x + 12, status_rect.y + 6))
-
-
-def handle_game_ui_click(mouse_pos, layout):
-    if current_turn_cards:
-        for button in layout["card_buttons"]:
-            if button["rect"].collidepoint(mouse_pos):
-                choose_card(button["id"])
-                return True
-        return True
-
-    for button in layout["action_buttons"]:
-        if button["rect"].collidepoint(mouse_pos):
-            if not button["enabled"]:
-                return True
-            if button["id"] == "expand":
-                expand_selected_hex()
-                return True
-            if button["id"].startswith("build:"):
-                build_on_selected_hex(button["id"].split(":", 1)[1])
-                return True
-
-    if layout["end_turn_rect"].collidepoint(mouse_pos):
-        finish_current_turn(auto=False)
-        return True
-
-    if layout["panel_rect"].collidepoint(mouse_pos):
-        return True
-
-    return False
-
-
 def show_options(screen, menu_surface, clock):
-    """Affiche un menu modal pour choisir la résolution. Retourne (screen, menu_surface)."""
+    """Affiche un menu modal pour choisir la resolution. Retourne (screen, menu_surface)."""
     options_running = True
     resolutions = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440)]
-    win_w, win_h = screen.get_size()
     btn_w, btn_h = 320, 70
     padding = 20
-    start_y = win_h // 2 - (len(resolutions) * (btn_h + padding)) // 2
-
-    # Crée les rects des choix et du bouton "Back"
-    option_buttons = []
-    for i, (rw, rh) in enumerate(resolutions):
-        rect = pygame.Rect(0, 0, btn_w, btn_h)
-        rect.center = (win_w // 2, start_y + i * (btn_h + padding))
-        option_buttons.append((rect, (rw, rh)))
-
-    back_rect = pygame.Rect(0, 0, btn_w, btn_h)
-    back_rect.center = (win_w // 2, start_y + len(resolutions) * (btn_h + padding) + 2 * padding)
 
     while options_running:
+        win_w, win_h = screen.get_size()
+        total_height = len(resolutions) * btn_h + (len(resolutions) - 1) * padding
+        start_y = max(90, (win_h - total_height) // 2)
+
+        option_buttons = []
+        for i, (rw, rh) in enumerate(resolutions):
+            rect = pygame.Rect(0, 0, btn_w, btn_h)
+            rect.center = (win_w // 2, start_y + i * (btn_h + padding) + btn_h // 2)
+            option_buttons.append((rect, (rw, rh)))
+
+        back_rect = pygame.Rect(0, 0, btn_w, btn_h)
+        back_rect.center = (win_w // 2, start_y + total_height + btn_h // 2 + padding * 2)
+
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 pygame.quit()
@@ -1060,57 +741,61 @@ def show_options(screen, menu_surface, clock):
                 else:
                     for rect, (rw, rh) in option_buttons:
                         if rect.collidepoint((mx, my)):
-                            # change la résolution et remet à l'échelle l'image de fond du menu si possible
                             screen = pygame.display.set_mode((rw, rh), pygame.RESIZABLE)
                             try:
                                 menu_image = pygame.image.load(asset_path("background.png")).convert_alpha()
                                 menu_surface = pygame.transform.scale(menu_image, (rw, rh))
                             except Exception:
-                                # Si le rechargement échoue, conserver un fond cohérent à la nouvelle taille.
                                 menu_surface = pygame.transform.scale(menu_surface, (rw, rh))
                             options_running = False
                             break
 
-        # Affichage du fond + overlay sombre
-        win_w, win_h = screen.get_size()
-        screen.blit(menu_surface, (0, 0))
+        scaled_menu = pygame.transform.smoothscale(menu_surface, (win_w, win_h))
+        screen.blit(scaled_menu, (0, 0))
         overlay = pygame.Surface((win_w, win_h), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 160))
         screen.blit(overlay, (0, 0))
 
         mx, my = pygame.mouse.get_pos()
 
-        # Dessine les options
         for rect, (rw, rh) in option_buttons:
             label = f"{rw} x {rh}"
             key = f"{rw}x{rh}"
             bg = get_option_button_background(key, rect.width, rect.height)
             if bg:
-                draw_option_image_button(screen, rect, bg, label=label)
+                draw_option_image_button(screen, rect, bg)
             else:
                 is_hover = rect.collidepoint((mx, my))
                 color = HOVER_BLUE if is_hover else TRANSLUCENT_BLUE
                 surf = pygame.Surface((btn_w, btn_h), pygame.SRCALPHA)
                 pygame.draw.rect(surf, color, (0, 0, btn_w, btn_h), border_radius=16)
                 screen.blit(surf, rect)
-                draw_option_image_button(screen, rect, None, label=label)
+                text_surf = FONT_BUTTON.render(label, True, BLANC)
+                text_rect = text_surf.get_rect(center=rect.center)
+                shadow = FONT_BUTTON.render(label, True, SHADOW)
+                screen.blit(shadow, (text_rect.x + 2, text_rect.y + 2))
+                screen.blit(text_surf, text_rect)
 
-        # Dessine le bouton Back
         bg = get_option_button_background("back", back_rect.width, back_rect.height)
         if bg:
-            draw_option_image_button(screen, back_rect, bg, label="Retour")
+            draw_option_image_button(screen, back_rect, bg)
         else:
             is_hover = back_rect.collidepoint((mx, my))
             color = HOVER_BLUE if is_hover else TRANSLUCENT_BLUE
             surf = pygame.Surface((btn_w, btn_h), pygame.SRCALPHA)
             pygame.draw.rect(surf, color, (0, 0, btn_w, btn_h), border_radius=16)
             screen.blit(surf, back_rect)
-            draw_option_image_button(screen, back_rect, None, label="Retour")
+            back_text = FONT_BUTTON.render("Back", True, BLANC)
+            back_text_rect = back_text.get_rect(center=back_rect.center)
+            back_shadow = FONT_BUTTON.render("Back", True, SHADOW)
+            screen.blit(back_shadow, (back_text_rect.x + 2, back_text_rect.y + 2))
+            screen.blit(back_text, back_text_rect)
 
         pygame.display.flip()
         clock.tick(60)
 
     return screen, menu_surface
+
 
 def music_menu(music_file):
     try:
@@ -1120,25 +805,605 @@ def music_menu(music_file):
             return
         pygame.mixer.music.load(music_file)
         pygame.mixer.music.set_volume(0.2)
-        pygame.mixer.music.play(-1)  # -1 pour une boucle infinie
+        pygame.mixer.music.play(-1)
     except pygame.error:
         pass
 
 
+status_message = ""
+status_message_until = 0
+build_action_rects = []
+end_turn_rect = None
+
+
+def assign_player_colors(players):
+    for index, player in enumerate(players):
+        player.color = PLAYER_COLORS[index % len(PLAYER_COLORS)]
+
+
+def get_building_entry_at_coords(q, r):
+    if not turn_manager:
+        return None, None
+
+    for player in turn_manager.players:
+        for placed_building in player.buildings:
+            if placed_building.q == q and placed_building.r == r:
+                return player, placed_building
+
+    return None, None
+
+
+def get_building_entry_at_hex(hex_obj):
+    if hex_obj is None:
+        return None, None
+    return get_building_entry_at_coords(hex_obj.q, hex_obj.r)
+
+
+def get_territory_owner_at_coords(q, r):
+    if not turn_manager:
+        return None
+
+    for player in turn_manager.players:
+        if player.owns_tile(q, r):
+            return player
+
+    return None
+
+
+def get_territory_owner_at_hex(hex_obj):
+    if hex_obj is None:
+        return None
+    return get_territory_owner_at_coords(hex_obj.q, hex_obj.r)
+
+
+def get_territory_lookup():
+    territory_lookup = {}
+    if not turn_manager:
+        return territory_lookup
+
+    for player in turn_manager.players:
+        for q, r in player.owned_tiles:
+            territory_lookup[(q, r)] = player
+
+    return territory_lookup
+
+
+def get_placed_buildings_lookup():
+    placed_buildings = {}
+    if not turn_manager:
+        return placed_buildings
+
+    for player in turn_manager.players:
+        for placed_building in player.buildings:
+            if placed_building.q is None or placed_building.r is None:
+                continue
+            placed_buildings[(placed_building.q, placed_building.r)] = (player, placed_building)
+
+    return placed_buildings
+
+
+def get_buildable_hexes_for_player(player):
+    if not carte or not turn_manager or player is None:
+        return []
+
+    buildable_hexes = []
+    for q, r in player.owned_tiles:
+        hex_obj = carte.get_hex(q, r)
+        if hex_obj is None or hex_obj.type_terrain == "eau":
+            continue
+
+        owner_player, placed_building = get_building_entry_at_coords(q, r)
+        if owner_player is not None and owner_player is not player:
+            continue
+
+        current_building = placed_building.building if placed_building else None
+        options = turn_manager.get_available_buildings(hex_obj.type_terrain, current_building)
+        if options:
+            buildable_hexes.append(hex_obj)
+
+    return buildable_hexes
+
+
+def get_game_layout(surface):
+    win_w, win_h = surface.get_size()
+    sidebar_w = min(390, max(320, int(win_w * 0.28)))
+    sidebar_rect = pygame.Rect(
+        win_w - sidebar_w - HUD_PADDING,
+        HUD_PADDING,
+        sidebar_w,
+        win_h - HUD_PADDING * 2,
+    )
+
+    map_rect = pygame.Rect(
+        HUD_PADDING,
+        HEADER_HEIGHT + HUD_PADDING,
+        sidebar_rect.x - HUD_PADDING * 2,
+        win_h - HEADER_HEIGHT - FOOTER_HEIGHT - HUD_PADDING * 2,
+    )
+
+    resources_rect = pygame.Rect(sidebar_rect.x, sidebar_rect.y, sidebar_rect.width, 146)
+    selected_top = resources_rect.bottom + SIDEBAR_GAP + SELECTED_PANEL_DROP
+    end_turn_top = sidebar_rect.bottom - END_TURN_BOTTOM_MARGIN - END_TURN_BUTTON_HEIGHT
+    selected_height = max(120, end_turn_top - END_TURN_PANEL_GAP - selected_top)
+    selected_rect = pygame.Rect(sidebar_rect.x, selected_top, sidebar_rect.width, selected_height)
+    footer_rect = pygame.Rect(HUD_PADDING, map_rect.bottom + 12, map_rect.width, FOOTER_HEIGHT - 12)
+    map_offset = (map_rect.x + MAP_INSET, map_rect.y + MAP_INSET)
+
+    return {
+        "sidebar_rect": sidebar_rect,
+        "resources_rect": resources_rect,
+        "selected_rect": selected_rect,
+        "map_rect": map_rect,
+        "map_base_offset": map_offset,
+        "footer_rect": footer_rect,
+    }
+
+
+def clamp_map_camera(layout):
+    global camera_pan_x, camera_pan_y
+
+    if not carte:
+        camera_pan_x = 0
+        camera_pan_y = 0
+        return
+
+    bounds = carte.get_world_bounds()
+    viewport_w = max(1, layout["map_rect"].width - MAP_INSET * 2)
+    viewport_h = max(1, layout["map_rect"].height - MAP_INSET * 2)
+
+    if bounds.width <= viewport_w:
+        camera_pan_x = int((viewport_w - bounds.width) / 2 - bounds.left)
+    else:
+        min_pan_x = viewport_w - bounds.right
+        max_pan_x = -bounds.left
+        camera_pan_x = max(min_pan_x, min(max_pan_x, camera_pan_x))
+
+    if bounds.height <= viewport_h:
+        camera_pan_y = int((viewport_h - bounds.height) / 2 - bounds.top)
+    else:
+        min_pan_y = viewport_h - bounds.bottom
+        max_pan_y = -bounds.top
+        camera_pan_y = max(min_pan_y, min(max_pan_y, camera_pan_y))
+
+
+def center_map_camera(layout):
+    global camera_pan_x, camera_pan_y
+
+    if not carte:
+        camera_pan_x = 0
+        camera_pan_y = 0
+        return
+
+    bounds = carte.get_world_bounds()
+    viewport_w = max(1, layout["map_rect"].width - MAP_INSET * 2)
+    viewport_h = max(1, layout["map_rect"].height - MAP_INSET * 2)
+    camera_pan_x = int((viewport_w - bounds.width) / 2 - bounds.left)
+    camera_pan_y = int((viewport_h - bounds.height) / 2 - bounds.top)
+    clamp_map_camera(layout)
+
+
+def get_map_draw_offset(layout):
+    base_x, base_y = layout["map_base_offset"]
+    return base_x + camera_pan_x, base_y + camera_pan_y
+
+
+def pan_map(dx, dy, layout):
+    global camera_pan_x, camera_pan_y
+    camera_pan_x += dx
+    camera_pan_y += dy
+    clamp_map_camera(layout)
+
+
+def get_start_targets(player_count, largeur, hauteur):
+    if player_count <= 1:
+        return [(largeur // 2, hauteur // 2)]
+    if player_count == 2:
+        return [(largeur // 4, hauteur // 2), (largeur * 3 // 4, hauteur // 2)]
+    if player_count == 3:
+        return [(largeur // 4, hauteur // 3), (largeur * 3 // 4, hauteur // 3), (largeur // 2, hauteur * 2 // 3)]
+    return [
+        (largeur // 4, hauteur // 4),
+        (largeur * 3 // 4, hauteur // 4),
+        (largeur // 4, hauteur * 3 // 4),
+        (largeur * 3 // 4, hauteur * 3 // 4),
+    ]
+
+
+def choose_starting_hexes(players):
+    if not carte or not players:
+        return []
+
+    land_hexes = [hex_obj for hex_obj in carte.hexagones if hex_obj.type_terrain != "eau"]
+    targets = get_start_targets(len(players), carte.largeur, carte.hauteur)
+    chosen_hexes = []
+
+    for target_q, target_r in targets:
+        best_hex = None
+        best_score = None
+
+        for hex_obj in land_hexes:
+            too_close = any(
+                ((hex_obj.q - other.q) ** 2 + (hex_obj.r - other.r) ** 2) < STARTING_POSITION_SEPARATION ** 2
+                for other in chosen_hexes
+            )
+            if too_close:
+                continue
+
+            nearby_hexes = carte.get_hexes_in_radius(hex_obj, 2)
+            land_count = sum(1 for nearby in nearby_hexes if nearby.type_terrain != "eau")
+            terrain_types = {nearby.type_terrain for nearby in nearby_hexes if nearby.type_terrain != "eau"}
+            dist_score = (hex_obj.q - target_q) ** 2 + (hex_obj.r - target_r) ** 2
+            grass_bonus = 35 if hex_obj.type_terrain == "herbe" else 0
+            score = land_count * 100 + len(terrain_types) * 20 + grass_bonus - dist_score
+
+            if best_score is None or score > best_score:
+                best_score = score
+                best_hex = hex_obj
+
+        if best_hex is None:
+            remaining = [hex_obj for hex_obj in land_hexes if hex_obj not in chosen_hexes]
+            if remaining:
+                best_hex = remaining[0]
+        if best_hex is not None:
+            chosen_hexes.append(best_hex)
+
+    return chosen_hexes
+
+
+def assign_starting_territories(players):
+    if not carte:
+        return
+
+    for player in players:
+        player.owned_tiles.clear()
+
+    starting_hexes = choose_starting_hexes(players)
+    for player, start_hex in zip(players, starting_hexes):
+        starting_zone = [
+            hex_obj
+            for hex_obj in carte.get_hexes_in_radius(start_hex, STARTING_TERRITORY_RADIUS)
+            if hex_obj.type_terrain != "eau"
+        ]
+        player.claim_tiles((hex_obj.q, hex_obj.r) for hex_obj in starting_zone)
+
+    if starting_hexes:
+        carte.select_hex(starting_hexes[0])
+        center_map_camera(get_game_layout(fenetre))
+
+
+def expand_player_territory(player, source_hex, building_id):
+    if not carte or source_hex is None:
+        return 0
+
+    territory_radius = tours.get_building_territory_radius(building_id)
+    claimed = 0
+
+    for hex_obj in carte.get_hexes_in_radius(source_hex, territory_radius):
+        if hex_obj.type_terrain == "eau":
+            continue
+
+        current_owner = get_territory_owner_at_coords(hex_obj.q, hex_obj.r)
+        if current_owner is None:
+            player.claim_tile(hex_obj.q, hex_obj.r)
+            claimed += 1
+        elif current_owner is player:
+            player.claim_tile(hex_obj.q, hex_obj.r)
+
+    return claimed
+
+
+def set_status_message(text, duration_ms=2600):
+    global status_message, status_message_until
+    status_message = text
+    status_message_until = pygame.time.get_ticks() + duration_ms
+
+
+def draw_action_button(
+    surface,
+    rect,
+    text,
+    mouse_pos,
+    enabled=True,
+    base_color=(74, 98, 184),
+    font=FONT_SMALL,
+    right_text=None,
+    right_font=None,
+):
+    if enabled:
+        is_hover = rect.collidepoint(mouse_pos)
+        color = HOVER_BLUE if is_hover else base_color
+        border = (235, 235, 235, 120)
+    else:
+        color = (70, 74, 90)
+        border = (150, 150, 150, 80)
+
+    button_surface = pygame.Surface(rect.size, pygame.SRCALPHA)
+    fill_color = color if len(color) == 4 else (*color, 220)
+    pygame.draw.rect(button_surface, fill_color, button_surface.get_rect(), border_radius=12)
+    pygame.draw.rect(button_surface, border, button_surface.get_rect(), width=1, border_radius=12)
+    surface.blit(button_surface, rect)
+
+    text_color = BLANC if enabled else (210, 210, 210)
+    text_surf = font.render(text, True, text_color)
+    shadow = font.render(text, True, SHADOW)
+
+    if right_text:
+        right_font = right_font or font
+        text_rect = text_surf.get_rect(midleft=(rect.x + 12, rect.centery))
+        surface.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+        surface.blit(text_surf, text_rect)
+
+        right_surf = right_font.render(right_text, True, text_color)
+        right_shadow = right_font.render(right_text, True, SHADOW)
+        right_rect = right_surf.get_rect(midright=(rect.right - 10, rect.centery))
+        surface.blit(right_shadow, (right_rect.x + 1, right_rect.y + 1))
+        surface.blit(right_surf, right_rect)
+    else:
+        text_rect = text_surf.get_rect(center=rect.center)
+        surface.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+        surface.blit(text_surf, text_rect)
+
+
+def get_active_player():
+    if not turn_manager:
+        return None
+    try:
+        return turn_manager.current_player()
+    except RuntimeError:
+        return None
+
+
+def add_debug_resources(resource_store):
+    if resource_store is None:
+        return
+    if hasattr(resource_store, "add_resource"):
+        resource_store.add_resource("wood", 10)
+        resource_store.add_resource("food", 10)
+        resource_store.add_resource("gold", 5)
+        resource_store.add_resource("money", 5)
+    elif isinstance(resource_store, dict):
+        resource_store["wood"] = resource_store.get("wood", 0) + 10
+        resource_store["food"] = resource_store.get("food", 0) + 10
+        resource_store["gold"] = resource_store.get("gold", 0) + 5
+        resource_store["money"] = resource_store.get("money", 0) + 5
+
+
+def handle_end_turn(timed_out=False):
+    global current_player_resources
+
+    player = get_active_player()
+    if not turn_manager or player is None:
+        return
+
+    old_turn_number = turn_manager.turn_number
+    old_period = turn_manager.period
+    turn_manager.player_finished(player)
+    next_player = get_active_player()
+
+    if next_player is not None:
+        current_player_resources = next_player.resources
+        reset_turn_timer()
+
+    if turn_manager.period != old_period:
+        prefix = "Temps ecoule. " if timed_out else ""
+        set_status_message(f"{prefix}Periode {turn_manager.period} - {tours.get_period_name(turn_manager.period)}")
+    elif turn_manager.turn_number != old_turn_number:
+        prefix = "Temps ecoule. " if timed_out else ""
+        set_status_message(f"{prefix}Nouveau tour pour {next_player.name}")
+    elif next_player is not None:
+        prefix = "Temps ecoule. " if timed_out else ""
+        set_status_message(f"{prefix}Tour de {next_player.name}")
+
+
+def handle_build_action(building_id):
+    global current_player_resources
+
+    player = get_active_player()
+    if not player or not carte or not carte.selected_hex:
+        set_status_message("Selectionnez une case avant de construire.")
+        return
+
+    hex_obj = carte.selected_hex
+    if hex_obj.type_terrain == "eau":
+        set_status_message("Impossible de construire sur l'eau.")
+        return
+
+    territory_owner = get_territory_owner_at_hex(hex_obj)
+    if territory_owner is not player:
+        if territory_owner is None:
+            set_status_message("Cette case est hors de votre territoire.")
+        else:
+            set_status_message(f"Cette zone appartient a {territory_owner.name}.")
+        return
+
+    owner_player, placed_building = get_building_entry_at_hex(hex_obj)
+
+    if owner_player and owner_player.name != player.name:
+        set_status_message(f"Cette case appartient a {owner_player.name}.")
+        return
+
+    current_building = placed_building.building if placed_building else None
+    options = turn_manager.get_available_buildings(hex_obj.type_terrain, current_building)
+    if building_id not in options:
+        set_status_message("Ce batiment n'est pas disponible ici.")
+        return
+
+    building_data = tours.get_building_definition(building_id)
+    has_free_build_token = not placed_building and player.free_build_tokens.get(building_id, 0) > 0
+    missing = tours.get_missing_resources(player.resources, building_data["cost"])
+    if missing and not has_free_build_token:
+        set_status_message("Il manque : " + tours.format_resource_bundle(missing))
+        return
+
+    success = False
+    if placed_building:
+        previous_label = tours.get_building_label(current_building)
+        success = player.upgrade_building(placed_building, building_id)
+        if success:
+            gained_tiles = expand_player_territory(player, hex_obj, building_id)
+            if gained_tiles:
+                set_status_message(
+                    f"{previous_label} devient {tours.get_building_label(building_id)}. Territoire +{gained_tiles}."
+                )
+            else:
+                set_status_message(f"{previous_label} devient {tours.get_building_label(building_id)}.")
+    else:
+        success = player.build(building_id, hex_obj.q, hex_obj.r)
+        if success:
+            gained_tiles = expand_player_territory(player, hex_obj, building_id)
+            if gained_tiles:
+                set_status_message(f"{tours.get_building_label(building_id)} construit. Territoire +{gained_tiles}.")
+            else:
+                set_status_message(f"{tours.get_building_label(building_id)} construit.")
+
+    if success:
+        current_player_resources = player.resources
+
+
+def draw_selected_hex_panel(surface, mouse_pos, panel_rect):
+    action_rects = []
+    player = get_active_player()
+    selected_hex = carte.selected_hex if carte else None
+
+    available_actions = []
+    info_line_count = 0
+    owner_player = None
+    placed_building = None
+    current_building = None
+    territory_owner = None
+    if turn_manager and selected_hex:
+        territory_owner = get_territory_owner_at_hex(selected_hex)
+        owner_player, placed_building = get_building_entry_at_hex(selected_hex)
+        current_building = placed_building.building if placed_building else None
+        if territory_owner is player:
+            available_actions = turn_manager.get_available_buildings(selected_hex.type_terrain, current_building)
+        info_line_count = 5 if current_building else 4
+
+    base_height = 92 if not selected_hex else 86 + info_line_count * 28
+    panel_h = min(panel_rect.height, base_height + len(available_actions) * 44)
+    panel_rect = pygame.Rect(panel_rect.x, panel_rect.y, panel_rect.width, panel_h)
+
+    draw_panel_background(surface, panel_rect)
+
+    title = FONT_SMALL.render("Case selectionnee", True, (245, 220, 120))
+    title_rect = title.get_rect(x=panel_rect.x + 16, y=panel_rect.y + 14)
+    surface.blit(title, title_rect)
+
+    if not selected_hex:
+        helper = FONT_TINY.render("Cliquez sur une case pour voir ses options.", True, BLANC)
+        helper_rect = helper.get_rect(x=panel_rect.x + 16, y=title_rect.bottom + 18)
+        surface.blit(helper, helper_rect)
+        return action_rects
+
+    terrain_labels = {
+        "herbe": "Plaine",
+        "foret": "Foret",
+        "montagne": "Montagne",
+        "eau": "Eau",
+    }
+
+    owner_name = owner_player.name if owner_player else "Aucun"
+    zone_label = "Votre territoire" if territory_owner is player else "Neutre"
+    if territory_owner and territory_owner is not player:
+        zone_label = f"Zone de {territory_owner.name}"
+    building_label = tours.get_building_label(current_building)
+    info_lines = [
+        f"Terrain : {terrain_labels.get(selected_hex.type_terrain, selected_hex.type_terrain)}",
+        f"Zone : {zone_label}",
+        f"Batiment : {building_label}",
+        f"Occupant : {owner_name}",
+    ]
+
+    if current_building:
+        info_lines.append("Bonus : " + tours.get_building_income_text(current_building))
+
+    line_y = title_rect.bottom + 14
+    for line in info_lines:
+        line_surf = FONT_TINY.render(line, True, BLANC)
+        surface.blit(line_surf, (panel_rect.x + 16, line_y))
+        line_y += line_surf.get_height() + 6
+
+    if selected_hex.type_terrain == "eau":
+        water_note = FONT_TINY.render("Aucune construction possible sur l'eau.", True, (220, 220, 220))
+        surface.blit(water_note, (panel_rect.x + 16, line_y + 8))
+        return action_rects
+
+    if territory_owner is None:
+        blocked = FONT_TINY.render("Construisez d'abord dans votre territoire.", True, (220, 220, 220))
+        surface.blit(blocked, (panel_rect.x + 16, line_y + 8))
+        return action_rects
+
+    if territory_owner and player and territory_owner.name != player.name:
+        blocked = FONT_TINY.render("Zone deja controlee par un autre joueur.", True, (220, 220, 220))
+        surface.blit(blocked, (panel_rect.x + 16, line_y + 8))
+        return action_rects
+
+    if not available_actions:
+        no_action = FONT_TINY.render("Pas d'amelioration disponible ici.", True, (220, 220, 220))
+        surface.blit(no_action, (panel_rect.x + 16, line_y + 8))
+        return action_rects
+
+    for action_index, building_id in enumerate(available_actions):
+        button_rect = pygame.Rect(panel_rect.x + 16, line_y + 8 + action_index * 44, panel_rect.width - 32, 36)
+        cost_text = tours.format_resource_bundle_short(tours.get_building_definition(building_id)["cost"])
+        draw_action_button(
+            surface,
+            button_rect,
+            tours.get_building_label(building_id),
+            mouse_pos,
+            enabled=True,
+            font=FONT_TINY,
+            right_text=cost_text,
+            right_font=FONT_TILE,
+        )
+        action_rects.append((button_rect, building_id))
+
+    return action_rects
+
+
+def draw_end_turn_button(surface, mouse_pos, sidebar_rect):
+    btn_w = min(240, max(180, int(surface.get_width() * 0.18)))
+    btn_h = END_TURN_BUTTON_HEIGHT
+    rect = pygame.Rect(0, 0, btn_w, btn_h)
+    rect.midbottom = (sidebar_rect.centerx, sidebar_rect.bottom - END_TURN_BOTTOM_MARGIN)
+    draw_action_button(surface, rect, "Fin du tour", mouse_pos, enabled=True, base_color=(0, 156, 88))
+    return rect
+
+
+def draw_status_banner(surface, anchor):
+    if status_message and pygame.time.get_ticks() < status_message_until:
+        draw_info_panel(
+            surface,
+            status_message,
+            anchor,
+            align="midbottom",
+            font=FONT_SMALL,
+        )
+
+
+def reset_turn_timer():
+    global turn_timer_started_at
+    turn_timer_started_at = pygame.time.get_ticks()
+
+
+def get_turn_time_remaining():
+    if turn_timer_started_at is None:
+        return TURN_DURATION_MS
+    elapsed = pygame.time.get_ticks() - turn_timer_started_at
+    return max(0, TURN_DURATION_MS - elapsed)
+
+
 running = True
 clock = pygame.time.Clock()
+FONT_TIMER = pygame.font.SysFont("consolas", 34, bold=True)
 music_menu(menu_music)
 
 while running:
     clock.tick(120)
 
-    ui_layout = build_game_ui_layout(fenetre) if game_state in ("game", "multi_game") and turn_manager else None
-
-    if game_state in ("game", "multi_game") and turn_manager and get_turn_remaining_ms() <= 0:
-        finish_current_turn(auto=True)
-        ui_layout = build_game_ui_layout(fenetre)
-
     win_w, win_h = fenetre.get_size()
+    game_layout = get_game_layout(fenetre)
+    clamp_map_camera(game_layout)
     for btn in boutons_menu:
         btn.rect.center = (win_w // 2, btn.center_y)
 
@@ -1148,17 +1413,18 @@ while running:
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 game_state = "menu"
-                set_status("Retour au menu.")
+                build_action_rects = []
+                end_turn_rect = None
             elif event.key == pygame.K_t and game_state in ("game", "multi_game"):
-                player = get_current_player()
-                if player:
-                    player.add_resource("wood", 10)
-                    player.add_resource("food", 10)
-                    player.add_resource("gold", 5)
-                    current_player_resources = player.resources
-                    set_status("Bonus de ressources ajoute.")
-            elif event.key == pygame.K_SPACE and game_state in ("game", "multi_game"):
-                finish_current_turn(auto=False)
+                add_debug_resources(current_player_resources)
+                set_status_message("Ressources de debug ajoutees.")
+        elif (
+            event.type == pygame.MOUSEBUTTONDOWN
+            and event.button == 3
+            and game_state in ("game", "multi_game")
+        ):
+            if game_layout["map_rect"].collidepoint(event.pos):
+                map_drag_active = True
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mouse_pos = event.pos
             if game_state == "menu":
@@ -1167,46 +1433,186 @@ while running:
                         if btn.action == "quit":
                             running = False
                         elif btn.action == "new_game":
-                            start_session([tours.Player("Empire")], "game")
+                            solo_player = tours.Player("Joueur 1")
+                            assign_player_colors([solo_player])
+                            turn_manager = tours.TurnManager([solo_player])
+                            carte = Carte(60, 52)
+                            assign_starting_territories(turn_manager.players)
+                            game_state = "game"
+                            reset_turn_timer()
+                            current_player_resources = turn_manager.current_player().resources
+                            set_status_message("Votre territoire de depart est pret.")
                         elif btn.action == "multiplayer":
                             selection_result = player_select.select_players(fenetre, clock)
                             if selection_result:
-                                _, selected_players = selection_result
-                                start_session(selected_players, "multi_game")
+                                turn_manager, players = selection_result
+                                assign_player_colors(players)
+                                carte = Carte(60, 52)
+                                assign_starting_territories(turn_manager.players)
+                                game_state = "multi_game"
+                                reset_turn_timer()
+                                current_player_resources = turn_manager.current_player().resources
+                                set_status_message("Les territoires de depart sont assignes.")
                         elif btn.action == "options":
                             fenetre, menu = show_options(fenetre, menu, clock)
-            elif game_state in ("game", "multi_game") and carte:
-                if ui_layout and handle_game_ui_click(mouse_pos, ui_layout):
-                    continue
-                map_offset_x, map_offset_y = get_map_offsets(fenetre, carte)
-                clicked_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1], map_offset_x, map_offset_y)
-                carte.select_hex(clicked_hex)
+            elif game_state in ("game", "multi_game"):
+                handled = False
+                for rect, building_id in build_action_rects:
+                    if rect.collidepoint(mouse_pos):
+                        handle_build_action(building_id)
+                        handled = True
+                        break
+
+                if not handled and end_turn_rect and end_turn_rect.collidepoint(mouse_pos):
+                    handle_end_turn()
+                    handled = True
+
+                if not handled and carte and game_layout["map_rect"].collidepoint(mouse_pos):
+                    map_offset_x, map_offset_y = get_map_draw_offset(game_layout)
+                    clicked_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1], offset_x=map_offset_x, offset_y=map_offset_y)
+                    carte.select_hex(clicked_hex)
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:
+            map_drag_active = False
+        elif event.type == pygame.MOUSEMOTION and map_drag_active and game_state in ("game", "multi_game"):
+            pan_map(event.rel[0], event.rel[1], game_layout)
 
     mouse_pos = pygame.mouse.get_pos()
+    keys = pygame.key.get_pressed()
+    if game_state in ("game", "multi_game") and carte:
+        move_x = 0
+        move_y = 0
+        if keys[pygame.K_LEFT] or keys[pygame.K_q]:
+            move_x += MAP_PAN_SPEED
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            move_x -= MAP_PAN_SPEED
+        if keys[pygame.K_UP] or keys[pygame.K_z]:
+            move_y += MAP_PAN_SPEED
+        if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+            move_y -= MAP_PAN_SPEED
+        if move_x or move_y:
+            pan_map(move_x, move_y, game_layout)
     if game_state == "menu":
+        build_action_rects = []
+        end_turn_rect = None
         win_w, win_h = fenetre.get_size()
-        fenetre.blit(pygame.transform.smoothscale(menu, (win_w, win_h)), (0, 0))
+        fenetre.blit(menu, (0, 0))
         title_surf, title_rect = update_menu_layout(fenetre)
         fenetre.blit(title_surf, title_rect)
         for btn in boutons_menu:
             btn.draw(fenetre, mouse_pos)
 
-    elif game_state in ("game", "multi_game"):
-        fenetre.fill((6, 10, 18))
-        map_offset_x, map_offset_y = get_map_offsets(fenetre, carte)
+    elif game_state == "game":
+        if turn_manager and get_turn_time_remaining() <= 0:
+            handle_end_turn(timed_out=True)
+        fenetre.fill(NOIR)
+        draw_panel_background(fenetre, game_layout["map_rect"], fill=(8, 12, 20, 255), border=(115, 132, 162, 110), radius=18)
+        draw_panel_background(fenetre, game_layout["footer_rect"], fill=(6, 12, 22, 160), border=(210, 210, 210, 90), radius=16)
+        territory_lookup = get_territory_lookup()
+        placed_buildings = get_placed_buildings_lookup()
+        buildable_hexes = get_buildable_hexes_for_player(get_active_player())
         if carte:
-            carte.dessiner(fenetre, map_offset_x, map_offset_y)
+            map_offset_x, map_offset_y = get_map_draw_offset(game_layout)
+            previous_clip = fenetre.get_clip()
+            fenetre.set_clip(game_layout["map_rect"])
+            carte.dessiner(fenetre, territory_lookup, placed_buildings, offset_x=map_offset_x, offset_y=map_offset_y)
             hovered_hex = None
-            if not (ui_layout and ui_layout["panel_rect"].collidepoint(mouse_pos)) and not current_turn_cards:
-                hovered_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1], map_offset_x, map_offset_y)
-            carte.draw_hex_highlight(fenetre, hovered_hex, map_offset_x, map_offset_y)
-        if ui_layout:
-            draw_game_ui(fenetre, ui_layout, mouse_pos)
+            if game_layout["map_rect"].collidepoint(mouse_pos):
+                hovered_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1], offset_x=map_offset_x, offset_y=map_offset_y)
+            for hex_obj in buildable_hexes:
+                if hovered_hex and (hex_obj.q, hex_obj.r) == (hovered_hex.q, hovered_hex.r):
+                    continue
+                x, y = hex_obj.get_pixel_pos()
+                carte.draw_buildable_overlay(fenetre, hex_obj, x + map_offset_x, y + map_offset_y - int(hex_obj.selection_lift * 10))
+            if hovered_hex:
+                carte.draw_hex_highlight(fenetre, hovered_hex, offset_x=map_offset_x, offset_y=map_offset_y)
+            fenetre.set_clip(previous_clip)
+        if turn_manager:
+            solo_player = turn_manager.current_player()
+            header_info_rect = draw_info_panel(
+                fenetre,
+                [
+                    f"{solo_player.name}",
+                    f"Tour {turn_manager.turn_number + 1}   |   Periode {turn_manager.period} ({tours.get_period_name(turn_manager.period)})",
+                ],
+                (HUD_PADDING, HUD_PADDING),
+            )
+        else:
+            header_info_rect = None
+        draw_info_panel(
+            fenetre,
+            "Echap : Menu   |   T : +Ressources   |   ZQSD/Fleches ou clic droit-glisser : deplacer la carte",
+            (game_layout["footer_rect"].x + 14, game_layout["footer_rect"].bottom - 12),
+            align="bottomleft",
+            font=FONT_SMALL,
+        )
+
+        remaining = get_turn_time_remaining()
+        timer_x = game_layout["map_rect"].right - 72
+        if header_info_rect is not None:
+            timer_x = max(timer_x, header_info_rect.right + 90)
+        timer_x = min(timer_x, game_layout["map_rect"].right - 36)
+        draw_timer_panel(fenetre, remaining, midtop=(timer_x, HUD_PADDING))
+
+        build_action_rects = draw_selected_hex_panel(fenetre, mouse_pos, game_layout["selected_rect"])
+        end_turn_rect = draw_end_turn_button(fenetre, mouse_pos, game_layout["sidebar_rect"])
+        ressources.draw_resources_overlay(fenetre, current_player_resources, panel_rect=game_layout["resources_rect"])
+        draw_status_banner(fenetre, (game_layout["map_rect"].centerx, game_layout["map_rect"].y - 10))
+
+    elif game_state == "multi_game":
+        if turn_manager and get_turn_time_remaining() <= 0:
+            handle_end_turn(timed_out=True)
+        fenetre.fill(NOIR)
+        draw_panel_background(fenetre, game_layout["map_rect"], fill=(8, 12, 20, 255), border=(115, 132, 162, 110), radius=18)
+        draw_panel_background(fenetre, game_layout["footer_rect"], fill=(6, 12, 22, 160), border=(210, 210, 210, 90), radius=16)
+        territory_lookup = get_territory_lookup()
+        placed_buildings = get_placed_buildings_lookup()
+        buildable_hexes = get_buildable_hexes_for_player(get_active_player())
+        if carte:
+            map_offset_x, map_offset_y = get_map_draw_offset(game_layout)
+            previous_clip = fenetre.get_clip()
+            fenetre.set_clip(game_layout["map_rect"])
+            carte.dessiner(fenetre, territory_lookup, placed_buildings, offset_x=map_offset_x, offset_y=map_offset_y)
+            hovered_hex = None
+            if game_layout["map_rect"].collidepoint(mouse_pos):
+                hovered_hex = carte.get_hex_at_pixel(mouse_pos[0], mouse_pos[1], offset_x=map_offset_x, offset_y=map_offset_y)
+            for hex_obj in buildable_hexes:
+                if hovered_hex and (hex_obj.q, hex_obj.r) == (hovered_hex.q, hovered_hex.r):
+                    continue
+                x, y = hex_obj.get_pixel_pos()
+                carte.draw_buildable_overlay(fenetre, hex_obj, x + map_offset_x, y + map_offset_y - int(hex_obj.selection_lift * 10))
+            if hovered_hex:
+                carte.draw_hex_highlight(fenetre, hovered_hex, offset_x=map_offset_x, offset_y=map_offset_y)
+            fenetre.set_clip(previous_clip)
+        if turn_manager:
+            header_info_rect = draw_info_panel(
+                fenetre,
+                [
+                    f"Tour de {turn_manager.current_player().name}",
+                    f"Manche {turn_manager.turn_number + 1}   |   Periode {turn_manager.period} ({tours.get_period_name(turn_manager.period)})",
+                ],
+                (HUD_PADDING, HUD_PADDING),
+            )
+        else:
+            header_info_rect = None
+        draw_info_panel(
+            fenetre,
+            "Echap : Menu   |   ZQSD/Fleches ou clic droit-glisser : deplacer la carte",
+            (game_layout["footer_rect"].x + 14, game_layout["footer_rect"].bottom - 12),
+            align="bottomleft",
+            font=FONT_SMALL,
+        )
+        remaining = get_turn_time_remaining()
+        timer_x = game_layout["map_rect"].right - 72
+        if header_info_rect is not None:
+            timer_x = max(timer_x, header_info_rect.right + 90)
+        timer_x = min(timer_x, game_layout["map_rect"].right - 36)
+        draw_timer_panel(fenetre, remaining, midtop=(timer_x, HUD_PADDING))
+        build_action_rects = draw_selected_hex_panel(fenetre, mouse_pos, game_layout["selected_rect"])
+        end_turn_rect = draw_end_turn_button(fenetre, mouse_pos, game_layout["sidebar_rect"])
+        ressources.draw_resources_overlay(fenetre, current_player_resources, panel_rect=game_layout["resources_rect"])
+        draw_status_banner(fenetre, (game_layout["map_rect"].centerx, game_layout["map_rect"].y - 10))
 
     pygame.display.flip()
 
-# Nettoyage
 pygame.quit()
 sys.exit()
-
-
