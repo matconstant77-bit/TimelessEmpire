@@ -1,38 +1,34 @@
-from __future__ import annotations
-
-from dataclasses import dataclass
-
 import pygame
 
 import tours
 
 
-@dataclass(frozen=True)
 class HudFonts:
-    hud: object
-    small: object
-    tiny: object
-    tile: object
-    timer: object
+    def __init__(self, hud, small, tiny, tile, timer):
+        self.hud = hud
+        self.small = small
+        self.tiny = tiny
+        self.tile = tile
+        self.timer = timer
 
 
-@dataclass(frozen=True)
 class HudTheme:
-    white: tuple
-    shadow: tuple
-    panel_bg: tuple
-    panel_border: tuple
-    hover_blue: tuple
+    def __init__(self, white, shadow, panel_bg, panel_border, hover_blue):
+        self.white = white
+        self.shadow = shadow
+        self.panel_bg = panel_bg
+        self.panel_border = panel_border
+        self.hover_blue = hover_blue
 
 
-@dataclass(frozen=True)
 class GameLayout:
-    sidebar_rect: pygame.Rect
-    resources_rect: pygame.Rect
-    selected_rect: pygame.Rect
-    map_rect: pygame.Rect
-    map_base_offset: tuple
-    footer_rect: pygame.Rect
+    def __init__(self, sidebar_rect, resources_rect, selected_rect, map_rect, map_base_offset, footer_rect):
+        self.sidebar_rect = sidebar_rect
+        self.resources_rect = resources_rect
+        self.selected_rect = selected_rect
+        self.map_rect = map_rect
+        self.map_base_offset = map_base_offset
+        self.footer_rect = footer_rect
 
     def __getitem__(self, key):
         return getattr(self, key)
@@ -50,6 +46,7 @@ def get_game_layout(
     end_turn_panel_gap,
     end_turn_button_height,
 ):
+    # La carte garde sa zone a gauche, les panneaux de jeu restent dans la colonne de droite.
     win_w, win_h = surface.get_size()
     sidebar_w = min(390, max(320, int(win_w * 0.28)))
     sidebar_rect = pygame.Rect(
@@ -203,7 +200,12 @@ def draw_selected_hex_panel(
     get_building_entry_at_hex,
     theme,
     fonts,
+    extra_lines=None,
+    extra_actions=None,
 ):
+    # Ce panneau affiche a la fois les constructions et les actions diplomatiques/attaque.
+    extra_lines = extra_lines or []
+    extra_actions = extra_actions or []
     action_rects = []
     available_actions = []
     info_line_count = 0
@@ -220,8 +222,9 @@ def draw_selected_hex_panel(
             available_actions = turn_manager.get_available_buildings(selected_hex.type_terrain, current_building)
         info_line_count = 5 if current_building else 4
 
-    base_height = 92 if not selected_hex else 86 + info_line_count * 28
-    panel_h = min(panel_rect.height, base_height + len(available_actions) * 44)
+    action_count = len(available_actions) + len(extra_actions)
+    base_height = 92 if not selected_hex else 86 + (info_line_count + len(extra_lines)) * 28
+    panel_h = min(panel_rect.height, base_height + action_count * 44)
     panel_rect = pygame.Rect(panel_rect.x, panel_rect.y, panel_rect.width, panel_h)
 
     draw_panel_background(surface, panel_rect, theme)
@@ -257,6 +260,7 @@ def draw_selected_hex_panel(
 
     if current_building:
         info_lines.append("Bonus : " + tours.get_building_income_text(current_building))
+    info_lines.extend(extra_lines)
 
     line_y = title_rect.bottom + 14
     for line in info_lines:
@@ -264,25 +268,18 @@ def draw_selected_hex_panel(
         surface.blit(line_surf, (panel_rect.x + 16, line_y))
         line_y += line_surf.get_height() + 6
 
+    blocked_message = ""
     if selected_hex.type_terrain == "eau":
-        water_note = fonts.tiny.render("Aucune construction possible sur l'eau.", True, (220, 220, 220))
-        surface.blit(water_note, (panel_rect.x + 16, line_y + 8))
-        return action_rects
+        blocked_message = "Aucune construction possible sur l'eau."
 
-    if territory_owner is None:
-        blocked = fonts.tiny.render("Construisez d'abord dans votre territoire.", True, (220, 220, 220))
-        surface.blit(blocked, (panel_rect.x + 16, line_y + 8))
-        return action_rects
+    elif territory_owner is None:
+        blocked_message = "Construisez d'abord dans votre territoire."
 
-    if territory_owner and active_player and territory_owner.name != active_player.name:
-        blocked = fonts.tiny.render("Zone deja controlee par un autre joueur.", True, (220, 220, 220))
-        surface.blit(blocked, (panel_rect.x + 16, line_y + 8))
-        return action_rects
+    elif territory_owner and active_player and territory_owner.name != active_player.name:
+        blocked_message = "Construction impossible dans cette zone."
 
-    if not available_actions:
-        no_action = fonts.tiny.render("Pas d'amelioration disponible ici.", True, (220, 220, 220))
-        surface.blit(no_action, (panel_rect.x + 16, line_y + 8))
-        return action_rects
+    elif not available_actions and not extra_actions:
+        blocked_message = "Pas d'amelioration disponible ici."
 
     for action_index, building_id in enumerate(available_actions):
         button_rect = pygame.Rect(panel_rect.x + 16, line_y + 8 + action_index * 44, panel_rect.width - 32, 36)
@@ -299,7 +296,34 @@ def draw_selected_hex_panel(
             right_text=cost_text,
             right_font=fonts.tile,
         )
-        action_rects.append((button_rect, building_id))
+        action_rects.append((button_rect, ("build", building_id)))
+
+    rendered_action_count = len(available_actions)
+    for extra_index, action in enumerate(extra_actions):
+        button_rect = pygame.Rect(
+            panel_rect.x + 16,
+            line_y + 8 + (rendered_action_count + extra_index) * 44,
+            panel_rect.width - 32,
+            36,
+        )
+        draw_action_button(
+            surface,
+            button_rect,
+            action["label"],
+            mouse_pos,
+            theme,
+            fonts,
+            enabled=action.get("enabled", True),
+            base_color=action.get("base_color", (74, 98, 184)),
+            font=fonts.tiny,
+            right_text=action.get("right_text"),
+            right_font=fonts.tile,
+        )
+        action_rects.append((button_rect, action["payload"]))
+
+    if blocked_message and not action_rects:
+        blocked = fonts.tiny.render(blocked_message, True, (220, 220, 220))
+        surface.blit(blocked, (panel_rect.x + 16, line_y + 8))
 
     return action_rects
 

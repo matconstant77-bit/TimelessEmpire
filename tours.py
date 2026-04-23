@@ -9,17 +9,18 @@ from typing import Dict, List, Optional, Set
 # ==============================
 
 TURNS_PER_PERIOD = 5
+ROUND_BONUS_MAX = 1
 
 STARTING_RESOURCES = {
-    "wood": 24,
-    "food": 18,
-    "gold": 6,
-    "money": 2,
+    "wood": 18,
+    "food": 14,
+    "gold": 4,
+    "money": 1,
 }
 
 BASE_RESOURCE_INCOME = {
-    "wood": 1,
-    "food": 1,
+    "wood": 0,
+    "food": 0,
     "gold": 0,
     "money": 0,
 }
@@ -33,6 +34,19 @@ PERIOD_NAMES = {
 }
 
 BUILDINGS = {
+    "capital": {
+        "label": "Capitale",
+        "short": "CP",
+        "period": 1,
+        "terrain": {"herbe", "foret", "montagne"},
+        "cost": {"wood": 0, "food": 0, "gold": 0, "money": 0},
+        "income": {"money": 1},
+        "territory_radius": 2,
+        "description": "Coeur de l'empire. Sa chute elimine le joueur.",
+        "defense": 7,
+        "attack": 0,
+        "is_capital": True,
+    },
     "rock_field": {
         "label": "Champ de roche",
         "short": "CR",
@@ -49,7 +63,7 @@ BUILDINGS = {
         "period": 1,
         "terrain": {"herbe"},
         "cost": {"wood": 6, "food": 0, "gold": 0, "money": 0},
-        "income": {"food": 2},
+        "income": {"food": 1},
         "territory_radius": 1,
         "description": "Production simple de nourriture.",
     },
@@ -80,7 +94,7 @@ BUILDINGS = {
         "period": 2,
         "terrain": {"herbe"},
         "cost": {"wood": 8, "food": 2, "gold": 1, "money": 0},
-        "income": {"food": 5},
+        "income": {"food": 3},
         "territory_radius": 1,
         "description": "Version developpee de la cueillette.",
         "upgrades_from": "gathering_site",
@@ -91,7 +105,7 @@ BUILDINGS = {
         "period": 2,
         "terrain": {"foret"},
         "cost": {"wood": 9, "food": 1, "gold": 1, "money": 0},
-        "income": {"wood": 5},
+        "income": {"wood": 4},
         "territory_radius": 1,
         "description": "Traitement plus efficace du bois.",
         "upgrades_from": "lumber_camp",
@@ -102,9 +116,11 @@ BUILDINGS = {
         "period": 2,
         "terrain": {"herbe", "foret"},
         "cost": {"wood": 12, "food": 6, "gold": 4, "money": 0},
-        "income": {"gold": 1},
+        "income": {"gold": 0},
         "territory_radius": 1,
         "description": "Base militaire pour soldats et cavalerie.",
+        "attack": 4,
+        "defense": 2,
     },
     "livestock": {
         "label": "Elevage",
@@ -112,7 +128,7 @@ BUILDINGS = {
         "period": 2,
         "terrain": {"herbe"},
         "cost": {"wood": 9, "food": 4, "gold": 1, "money": 0},
-        "income": {"food": 4},
+        "income": {"food": 2},
         "territory_radius": 1,
         "description": "Production alimentaire reguliere.",
     },
@@ -122,9 +138,10 @@ BUILDINGS = {
         "period": 2,
         "terrain": {"herbe", "foret"},
         "cost": {"wood": 8, "food": 2, "gold": 3, "money": 0},
-        "income": {"money": 2},
+        "income": {"money": 1},
         "territory_radius": 1,
         "description": "Base de communication entre joueurs.",
+        "trade_route": 1,
     },
     "messenger_post": {
         "label": "Messagers et diligence",
@@ -132,10 +149,11 @@ BUILDINGS = {
         "period": 3,
         "terrain": {"herbe", "foret"},
         "cost": {"wood": 10, "food": 2, "gold": 5, "money": 1},
-        "income": {"money": 4},
+        "income": {"money": 3},
         "territory_radius": 2,
         "description": "Evolution du poste pour messages et echanges.",
         "upgrades_from": "post",
+        "trade_route": 2,
     },
     "siege_workshop": {
         "label": "Batiments de siege",
@@ -147,6 +165,8 @@ BUILDINGS = {
         "territory_radius": 2,
         "description": "Renforce la caserne avec armes de siege.",
         "upgrades_from": "barracks",
+        "attack": 7,
+        "defense": 3,
     },
     "printing_press": {
         "label": "Imprimerie",
@@ -154,7 +174,7 @@ BUILDINGS = {
         "period": 3,
         "terrain": {"herbe"},
         "cost": {"wood": 12, "food": 2, "gold": 6, "money": 0},
-        "income": {"money": 2},
+        "income": {"money": 1},
         "gold_to_money": 1,
         "gold_to_money_ratio": 3,
         "territory_radius": 1,
@@ -170,6 +190,8 @@ BUILDINGS = {
         "territory_radius": 2,
         "description": "Evolution moderne de la caserne.",
         "upgrades_from": "siege_workshop",
+        "attack": 10,
+        "defense": 5,
     },
     "city": {
         "label": "Ville fortifiee",
@@ -177,9 +199,11 @@ BUILDINGS = {
         "period": 4,
         "terrain": {"herbe"},
         "cost": {"wood": 16, "food": 8, "gold": 8, "money": 4},
-        "income": {"food": 3, "money": 4},
+        "income": {"food": 1, "money": 3},
         "territory_radius": 2,
         "description": "Gestion de la population et des fortifications.",
+        "attack": 1,
+        "defense": 5,
     },
 }
 
@@ -330,6 +354,11 @@ class Player:
         self.buildings: List[PlacedBuilding] = []
         self.free_build_tokens: Dict[str, int] = {}
         self.owned_tiles: Set[tuple[int, int]] = set()
+        self.defeated = False
+        self.attack_used = False
+        self.trade_used = False
+        self.capitals_captured = 0
+        self.successful_trades = 0
 
     def add_resource(self, resource: str, amount: int):
         ensure_resource_keys(self.resources)
@@ -357,6 +386,9 @@ class Player:
     def claim_tile(self, q: int, r: int):
         self.owned_tiles.add((q, r))
 
+    def release_tile(self, q: int, r: int):
+        self.owned_tiles.discard((q, r))
+
     def claim_tiles(self, coords):
         for q, r in coords:
             self.claim_tile(q, r)
@@ -369,6 +401,48 @@ class Player:
             if placed_building.q == q and placed_building.r == r:
                 return placed_building
         return None
+
+    def remove_building(self, placed_building: PlacedBuilding) -> bool:
+        if placed_building not in self.buildings:
+            return False
+        self.buildings.remove(placed_building)
+        return True
+
+    def reset_turn_state(self):
+        self.attack_used = False
+        self.trade_used = False
+
+    def has_building(self, building: str) -> bool:
+        return any(placed_building.building == building for placed_building in self.buildings)
+
+    def has_any_building(self, building_ids) -> bool:
+        return any(placed_building.building in building_ids for placed_building in self.buildings)
+
+    def capital_building(self) -> Optional[PlacedBuilding]:
+        for placed_building in self.buildings:
+            if BUILDINGS.get(placed_building.building, {}).get("is_capital"):
+                return placed_building
+        return None
+
+    def has_capital(self) -> bool:
+        return self.capital_building() is not None
+
+    def military_power(self, stat: str = "attack") -> int:
+        total = 0
+        for placed_building in self.buildings:
+            total += int(BUILDINGS.get(placed_building.building, {}).get(stat, 0))
+        return total
+
+    def trade_route_level(self) -> int:
+        level = 0
+        for placed_building in self.buildings:
+            level = max(level, int(BUILDINGS.get(placed_building.building, {}).get("trade_route", 0)))
+        return level
+
+    def building_count(self, exclude_capital: bool = False) -> int:
+        if not exclude_capital:
+            return len(self.buildings)
+        return sum(1 for placed_building in self.buildings if not BUILDINGS.get(placed_building.building, {}).get("is_capital"))
 
     def build(self, building: str, q: Optional[int] = None, r: Optional[int] = None) -> bool:
         if q is not None and r is not None and self.find_building_at(q, r):
@@ -411,19 +485,29 @@ class Player:
         return True
 
     def destroy_random_building(self) -> Optional[PlacedBuilding]:
-        if not self.buildings:
+        candidates = [
+            placed_building
+            for placed_building in self.buildings
+            if not BUILDINGS.get(placed_building.building, {}).get("is_capital")
+        ]
+        if not candidates:
             print("Mais aucun batiment n'existe.")
             return None
-        index = random.randrange(len(self.buildings))
-        destroyed = self.buildings.pop(index)
+        destroyed = random.choice(candidates)
+        self.buildings.remove(destroyed)
         print(f"Le batiment {get_building_label(destroyed.building)} a ete detruit !")
         return destroyed
 
     def trap_random_building(self) -> bool:
-        if not self.buildings:
+        candidates = [
+            placed_building
+            for placed_building in self.buildings
+            if not BUILDINGS.get(placed_building.building, {}).get("is_capital")
+        ]
+        if not candidates:
             print("Mais aucun batiment a pieger.")
             return False
-        random.choice(self.buildings).trapped = True
+        random.choice(candidates).trapped = True
         print("Un batiment a ete piege !")
         return True
 
@@ -539,9 +623,97 @@ class TurnManager:
         self._played_this_round: Set[Player] = set()
         self.turn_number = 0
         self.period = 1
+        self.relations: Dict[tuple[str, str], str] = {}
+        for player in self.players:
+            player.reset_turn_state()
+
+    def active_players(self) -> List[Player]:
+        return [player for player in self.players if not player.defeated]
+
+    def get_player_by_name(self, player_name: str) -> Optional[Player]:
+        for player in self.players:
+            if player.name == player_name:
+                return player
+        return None
+
+    def _relation_key(self, player_a: Player, player_b: Player) -> tuple[str, str]:
+        return tuple(sorted((player_a.name, player_b.name)))
+
+    def get_relation(self, player_a: Optional[Player], player_b: Optional[Player]) -> str:
+        if player_a is None or player_b is None or player_a is player_b:
+            return "neutral"
+        return self.relations.get(self._relation_key(player_a, player_b), "neutral")
+
+    def set_relation(self, player_a: Optional[Player], player_b: Optional[Player], relation: str):
+        if player_a is None or player_b is None or player_a is player_b:
+            return
+        self.relations[self._relation_key(player_a, player_b)] = relation
+
+    def get_winner(self) -> Optional[Player]:
+        active_players = self.active_players()
+        if len(self.players) > 1 and len(active_players) == 1:
+            return active_players[0]
+        return None
+
+    def count_remaining_empires(self) -> int:
+        return len(self.active_players())
+
+    def get_leaderboard(self) -> List[Player]:
+        return sorted(
+            self.active_players(),
+            key=lambda player: (
+                player.capitals_captured,
+                len(player.owned_tiles),
+                player.building_count(exclude_capital=True),
+            ),
+            reverse=True,
+        )
+
+    def get_objective_snapshot(self, player: Optional[Player]) -> Dict[str, object]:
+        leaderboard = self.get_leaderboard()
+        leader = leaderboard[0] if leaderboard else None
+        return {
+            "remaining_empires": self.count_remaining_empires(),
+            "player_capitals": player.capitals_captured if player is not None else 0,
+            "player_territory": len(player.owned_tiles) if player is not None else 0,
+            "player_buildings": player.building_count(exclude_capital=True) if player is not None else 0,
+            "leader_name": leader.name if leader is not None else "",
+            "leader_capitals": leader.capitals_captured if leader is not None else 0,
+            "leader_territory": len(leader.owned_tiles) if leader is not None else 0,
+        }
+
+    def allied_players_for(self, player: Player) -> List[Player]:
+        return [
+            other
+            for other in self.active_players()
+            if other is not player and self.get_relation(player, other) == "allied"
+        ]
+
+    def apply_alliance_round_bonuses(self):
+        processed_pairs = set()
+        for player in self.active_players():
+            for ally in self.allied_players_for(player):
+                pair_key = self._relation_key(player, ally)
+                if pair_key in processed_pairs:
+                    continue
+                processed_pairs.add(pair_key)
+                for resource, amount in {"money": 1}.items():
+                    player.add_resource(resource, amount)
+                    ally.add_resource(resource, amount)
+
+    def eliminate_player(self, player: Optional[Player]):
+        if player is None or player.defeated:
+            return
+        player.defeated = True
+        self._played_this_round.discard(player)
+        self.relations = {
+            key: relation
+            for key, relation in self.relations.items()
+            if player.name not in key
+        }
 
     def current_player(self) -> Player:
-        for player in self.players:
+        for player in self.active_players():
             if player not in self._played_this_round:
                 return player
         raise RuntimeError("Tous les joueurs ont joue")
@@ -550,19 +722,21 @@ class TurnManager:
         return get_build_options(self.period, terrain, current_building)
 
     def player_finished(self, player: Player):
+        if player.defeated:
+            return
         self._played_this_round.add(player)
-        if self._played_this_round == set(self.players):
+        if self._played_this_round == set(self.active_players()):
             self.end_round()
 
     def end_round(self):
         print("\n====== FIN DU TOUR ======")
         self.turn_number += 1
 
-        for player in self.players:
+        for player in self.active_players():
             print(f"\nRessources pour {player.name}")
             bonus = {
-                "wood": random.randint(0, 2),
-                "food": random.randint(0, 2),
+                "wood": random.randint(0, ROUND_BONUS_MAX),
+                "food": random.randint(0, ROUND_BONUS_MAX),
             }
             total_income = bonus.copy()
             for resource, amount in player.income_from_buildings().items():
@@ -570,12 +744,16 @@ class TurnManager:
             player.receive_resources(extra=total_income)
             print(player.resources)
 
+        self.apply_alliance_round_bonuses()
+
         next_period = min(5, self.turn_number // TURNS_PER_PERIOD + 1)
         if next_period > self.period:
             self.period = next_period
             print(f"\nNOUVELLE PERIODE : {self.period} ({get_period_name(self.period)})")
 
         self._played_this_round.clear()
+        for player in self.players:
+            player.reset_turn_state()
 
 
 if __name__ == "__main__":

@@ -1,26 +1,23 @@
-from __future__ import annotations
-
-from dataclasses import dataclass, field
-from typing import Any, Optional
-
-
-@dataclass
 class GameSession:
-    game_state: str = "menu"
-    carte: Any = None
-    turn_manager: Any = None
-    current_player_resources: Any = None
-    camera_pan_x: int = 0
-    camera_pan_y: int = 0
-    map_drag_active: bool = False
-    turn_timer_started_at: Optional[int] = None
-    status_message: str = ""
-    status_message_until: int = 0
-    build_action_rects: list = field(default_factory=list)
-    end_turn_rect: Any = None
+    """Etat de partie partage entre la boucle Pygame et les modules d'UI."""
+
+    def __init__(self):
+        self.game_state = "menu"
+        self.carte = None
+        self.turn_manager = None
+        self.current_player_resources = None
+        self.camera_pan_x = 0
+        self.camera_pan_y = 0
+        self.map_drag_active = False
+        self.turn_timer_started_at = None
+        self.status_message = ""
+        self.status_message_until = 0
+        self.panel_action_rects = []
+        self.end_turn_rect = None
+        self.winner_name = None
 
     def clear_match_ui(self):
-        self.build_action_rects = []
+        self.panel_action_rects = []
         self.end_turn_rect = None
 
     def get_active_player(self):
@@ -52,6 +49,7 @@ class GameSession:
         self.camera_pan_x = 0
         self.camera_pan_y = 0
         self.map_drag_active = False
+        self.winner_name = None
         self.clear_match_ui()
         self.reset_turn_timer(now_ticks)
 

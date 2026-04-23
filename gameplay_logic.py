@@ -167,6 +167,8 @@ def expand_player_territory(carte, turn_manager, player, source_hex, building_id
         return 0
 
     territory_radius = get_building_territory_radius(building_id)
+    if building_id != "capital":
+        territory_radius += 1
     claimed = 0
 
     for hex_obj in carte.get_hexes_in_radius(source_hex, territory_radius):

@@ -19,6 +19,8 @@ sys.stderr = StringIO()
 
 import pygame
 from pygame.locals import *
+import combat_logic
+import diplomacy_logic
 import ressources
 import tours
 import player_select
@@ -562,6 +564,7 @@ def assign_starting_territories(players):
     )
     if starting_hexes:
         center_map_camera(get_game_layout(fenetre))
+    return starting_hexes
 
 
 def expand_player_territory(player, source_hex, building_id):
@@ -577,6 +580,264 @@ def expand_player_territory(player, source_hex, building_id):
 
 def set_status_message(text, duration_ms=2600):
     session.set_status_message(text, pygame.time.get_ticks(), duration_ms)
+
+
+def set_winner(player):
+    if player is None:
+        return
+    session.winner_name = player.name
+    set_status_message(f"{player.name} remporte la partie !", duration_ms=6000)
+
+
+def evaluate_victory_state():
+    if not session.turn_manager:
+        return None
+    winner = session.turn_manager.get_winner()
+    if winner is not None and session.winner_name is None:
+        set_winner(winner)
+    return winner
+
+
+def place_starting_capitals(players, starting_hexes):
+    for player in players:
+        player.defeated = False
+        player.reset_turn_state()
+        player.buildings = [
+            placed_building
+            for placed_building in player.buildings
+            if not tours.get_building_definition(placed_building.building).get("is_capital")
+        ]
+    for player, start_hex in zip(players, starting_hexes):
+        if start_hex is None:
+            continue
+        player.build("capital", start_hex.q, start_hex.r)
+        expand_player_territory(player, start_hex, "capital")
+
+
+def conquer_defeated_player(attacker, defender, destroyed_capital=None):
+    capital_coords = None
+    if destroyed_capital is not None:
+        capital_coords = (destroyed_capital.q, destroyed_capital.r)
+    for placed_building in list(defender.buildings):
+        defender.remove_building(placed_building)
+        if tours.get_building_definition(placed_building.building).get("is_capital"):
+            continue
+        if capital_coords == (placed_building.q, placed_building.r):
+            continue
+        placed_building.trapped = False
+        if attacker.find_building_at(placed_building.q, placed_building.r) is None:
+            attacker.buildings.append(placed_building)
+    for q, r in list(defender.owned_tiles):
+        attacker.claim_tile(q, r)
+    defender.owned_tiles.clear()
+    session.turn_manager.eliminate_player(defender)
+
+
+def handle_relation_action(target_name, relation):
+    player = get_active_player()
+    if not player or not session.turn_manager:
+        return
+    target_player = session.turn_manager.get_player_by_name(target_name)
+    if target_player is None or target_player is player or target_player.defeated:
+        set_status_message("Cette relation n'est plus disponible.")
+        return
+    current_relation = session.turn_manager.get_relation(player, target_player)
+    if current_relation == relation:
+        if relation == diplomacy_logic.RELATION_ALLIED:
+            set_status_message(f"Alliance deja active avec {target_player.name}.")
+        elif relation == diplomacy_logic.RELATION_WAR:
+            set_status_message(f"Vous etes deja en guerre avec {target_player.name}.")
+        else:
+            set_status_message(f"Relation deja definie avec {target_player.name}.")
+        return
+    session.turn_manager.set_relation(player, target_player, relation)
+    if relation == diplomacy_logic.RELATION_ALLIED:
+        set_status_message(f"Alliance conclue avec {target_player.name} : bonus d'economie et de commerce.")
+    elif relation == diplomacy_logic.RELATION_WAR:
+        set_status_message(f"Guerre declaree contre {target_player.name} : sa capitale devient votre cible.")
+    else:
+        set_status_message(f"Relation avec {target_player.name} mise a jour.")
+    evaluate_victory_state()
+
+
+def handle_trade_action(target_name):
+    player = get_active_player()
+    if not player or not session.turn_manager:
+        return
+    target_player = session.turn_manager.get_player_by_name(target_name)
+    if target_player is None or target_player is player or target_player.defeated:
+        set_status_message("Commerce indisponible.")
+        return
+    relation = session.turn_manager.get_relation(player, target_player)
+    success, message = diplomacy_logic.execute_trade(player, target_player, relation)
+    if success:
+        session.current_player_resources = player.resources
+    set_status_message(message)
+    evaluate_victory_state()
+
+
+def handle_attack_action():
+    player = get_active_player()
+    if not player or not session.turn_manager or not session.carte or not session.carte.selected_hex:
+        set_status_message("Selectionnez une zone ennemie a attaquer.")
+        return
+
+    target_hex = session.carte.selected_hex
+    defender = get_territory_owner_at_hex(target_hex)
+    if defender is None or defender is player:
+        set_status_message("Aucune cible ennemie sur cette case.")
+        return
+
+    owner_player, placed_building = get_building_entry_at_hex(target_hex)
+    preview = combat_logic.get_attack_preview(
+        session.carte,
+        session.turn_manager,
+        player,
+        defender,
+        target_hex,
+        placed_building,
+    )
+    if not preview["available"]:
+        set_status_message(preview["reason"])
+        return
+
+    player.pay_cost(combat_logic.ATTACK_COST)
+    player.attack_used = True
+    result = combat_logic.resolve_attack(player, defender, placed_building)
+
+    if result["success"]:
+        defender.release_tile(target_hex.q, target_hex.r)
+        player.claim_tile(target_hex.q, target_hex.r)
+        if owner_player is defender and placed_building is not None:
+            defender.remove_building(placed_building)
+            if tours.get_building_definition(placed_building.building).get("is_capital"):
+                player.capitals_captured += 1
+                conquer_defeated_player(player, defender, destroyed_capital=placed_building)
+                set_status_message(
+                    f"{player.name} prend la capitale de {defender.name} ! ({result['attack_roll']} vs {result['defense_roll']})",
+                    duration_ms=4200,
+                )
+                evaluate_victory_state()
+                session.current_player_resources = player.resources
+                return
+            placed_building.trapped = False
+            if player.find_building_at(placed_building.q, placed_building.r) is None:
+                player.buildings.append(placed_building)
+        set_status_message(f"Attaque reussie ! ({result['attack_roll']} vs {result['defense_roll']})")
+    else:
+        set_status_message(f"Attaque repoussee. ({result['attack_roll']} vs {result['defense_roll']})")
+
+    session.current_player_resources = player.resources
+    evaluate_victory_state()
+
+
+def get_selected_panel_extras():
+    player = get_active_player()
+    selected_hex = session.carte.selected_hex if session.carte else None
+    if not player or not session.turn_manager or selected_hex is None:
+        return [], []
+
+    territory_owner = get_territory_owner_at_hex(selected_hex)
+    if territory_owner is None or territory_owner is player or territory_owner.defeated:
+        return [], []
+
+    owner_player, placed_building = get_building_entry_at_hex(selected_hex)
+    relation = session.turn_manager.get_relation(player, territory_owner)
+    extra_lines = [f"Relation : {diplomacy_logic.relation_label(relation)}"]
+    extra_actions = []
+
+    if owner_player is territory_owner and placed_building is not None:
+        if tours.get_building_definition(placed_building.building).get("is_capital"):
+            extra_lines.append("Objectif : capitale ennemie")
+
+    attack_preview = combat_logic.get_attack_preview(
+        session.carte,
+        session.turn_manager,
+        player,
+        territory_owner,
+        selected_hex,
+        placed_building,
+    )
+    if relation == diplomacy_logic.RELATION_WAR:
+        extra_lines.append("But : prendre sa capitale ou ses zones.")
+        if attack_preview["available"]:
+            extra_lines.append(combat_logic.format_preview(attack_preview))
+            extra_actions.append(
+                {
+                    "label": "Attaquer",
+                    "payload": ("attack", None),
+                    "right_text": tours.format_resource_bundle_short(combat_logic.ATTACK_COST),
+                    "base_color": (176, 82, 54),
+                }
+            )
+        elif attack_preview["reason"]:
+            extra_lines.append(attack_preview["reason"])
+    else:
+        extra_lines.append("Guerre : debloque l'attaque et la conquete.")
+        extra_actions.append(
+            {
+                "label": "Declarer guerre",
+                "payload": ("declare_war", territory_owner.name),
+                "base_color": (165, 62, 62),
+            }
+        )
+
+    if relation == diplomacy_logic.RELATION_NEUTRAL:
+        extra_lines.append("Alliance : bonus d'argent a chaque manche et meilleur commerce.")
+        extra_actions.append(
+            {
+                "label": "Former alliance",
+                "payload": ("alliance", territory_owner.name),
+                "base_color": (78, 128, 201),
+            }
+        )
+    elif relation == diplomacy_logic.RELATION_ALLIED:
+        extra_lines.append("Alliance active : bonus d'argent et echanges facilites.")
+
+    trade_preview = diplomacy_logic.get_trade_preview(player, territory_owner, relation)
+    if trade_preview["available"]:
+        extra_actions.append(
+            {
+                "label": trade_preview["label"],
+                "payload": ("trade", territory_owner.name),
+                "right_text": trade_preview["short"],
+                "base_color": (104, 152, 84),
+            }
+        )
+    elif trade_preview["reason"] and relation != diplomacy_logic.RELATION_WAR:
+        extra_lines.append("Commerce : " + trade_preview["reason"])
+
+    return extra_lines, extra_actions
+
+
+def get_objective_lines():
+    if not session.turn_manager:
+        return []
+    snapshot = session.turn_manager.get_objective_snapshot(get_active_player())
+    lines = ["Objectif : detruire les capitales adverses"]
+    if get_active_player() is not None:
+        lines.append(
+            f"Capitales prises {snapshot['player_capitals']} | Territoire {snapshot['player_territory']} cases | Batiments {snapshot['player_buildings']}"
+        )
+    if snapshot["leader_name"]:
+        lines.append(
+            f"Leader : {snapshot['leader_name']} ({snapshot['leader_capitals']} capitales, {snapshot['leader_territory']} cases) | Empires restants {snapshot['remaining_empires']}"
+        )
+    return lines
+
+
+def handle_panel_action(payload):
+    action_type, value = payload
+    if action_type == "build":
+        handle_build_action(value)
+    elif action_type == "attack":
+        handle_attack_action()
+    elif action_type == "declare_war":
+        handle_relation_action(value, diplomacy_logic.RELATION_WAR)
+    elif action_type == "alliance":
+        handle_relation_action(value, diplomacy_logic.RELATION_ALLIED)
+    elif action_type == "trade":
+        handle_trade_action(value)
 
 
 def draw_panel_background(surface, rect, fill=PANEL_BG, border=PANEL_BORDER, radius=16):
@@ -600,6 +861,8 @@ def add_debug_resources(resource_store):
 
 
 def handle_end_turn(timed_out=False):
+    if session.winner_name:
+        return
     player = get_active_player()
     if not session.turn_manager or player is None:
         return
@@ -607,6 +870,8 @@ def handle_end_turn(timed_out=False):
     old_turn_number = session.turn_manager.turn_number
     old_period = session.turn_manager.period
     session.turn_manager.player_finished(player)
+    if evaluate_victory_state() is not None:
+        return
     next_player = get_active_player()
 
     if next_player is not None:
@@ -688,6 +953,7 @@ def handle_build_action(building_id):
 
 
 def draw_selected_hex_panel(surface, mouse_pos, panel_rect):
+    extra_lines, extra_actions = get_selected_panel_extras()
     return render_selected_hex_panel(
         surface,
         mouse_pos,
@@ -699,6 +965,8 @@ def draw_selected_hex_panel(surface, mouse_pos, panel_rect):
         get_building_entry_at_hex,
         HUD_THEME,
         HUD_FONTS,
+        extra_lines=extra_lines,
+        extra_actions=extra_actions,
     )
 
 
@@ -738,7 +1006,8 @@ def begin_match(game_state_name, turn_manager, players):
     new_map = Carte(60, 52, tuiles, terrain_variantes, FONT_TILE)
     session.carte = new_map
     session.turn_manager = turn_manager
-    assign_starting_territories(players)
+    starting_hexes = assign_starting_territories(players)
+    place_starting_capitals(players, starting_hexes)
     active_resources = turn_manager.current_player().resources if turn_manager else None
     session.start_match(
         game_state_name,
@@ -750,7 +1019,7 @@ def begin_match(game_state_name, turn_manager, players):
 
 
 def render_match_scene(mode, mouse_pos, game_layout):
-    if session.turn_manager and get_turn_time_remaining() <= 0:
+    if session.turn_manager and session.winner_name is None and get_turn_time_remaining() <= 0:
         handle_end_turn(timed_out=True)
 
     fenetre.fill(NOIR)
@@ -804,14 +1073,14 @@ def render_match_scene(mode, mouse_pos, game_layout):
         header_lines = [
             f"{session.turn_manager.current_player().name}",
             f"Tour {session.turn_manager.turn_number + 1}   |   Periode {session.turn_manager.period} ({tours.get_period_name(session.turn_manager.period)})",
-        ]
-        footer_text = "Echap : Menu   |   T : +Ressources   |   ZQSD/Fleches ou clic droit-glisser : deplacer la carte"
+        ] + get_objective_lines()
+        footer_text = "Echap : Menu   |   T : +Ressources   |   ZQSD/Fleches ou clic droit-glisser : deplacer la carte   |   But : capitales, alliances, commerce et conquete"
     elif session.turn_manager:
         header_lines = [
             f"Tour de {session.turn_manager.current_player().name}",
             f"Manche {session.turn_manager.turn_number + 1}   |   Periode {session.turn_manager.period} ({tours.get_period_name(session.turn_manager.period)})",
-        ]
-        footer_text = "Echap : Menu   |   ZQSD/Fleches ou clic droit-glisser : deplacer la carte"
+        ] + get_objective_lines()
+        footer_text = "Echap : Menu   |   ZQSD/Fleches ou clic droit-glisser : deplacer la carte   |   But : capitales, alliances, commerce et conquete"
     else:
         header_lines = []
         footer_text = "Echap : Menu"
@@ -822,6 +1091,7 @@ def render_match_scene(mode, mouse_pos, game_layout):
             fenetre,
             header_lines,
             (HUD_PADDING, HUD_PADDING),
+            font=FONT_SMALL,
         )
 
     draw_info_panel(
@@ -839,10 +1109,19 @@ def render_match_scene(mode, mouse_pos, game_layout):
     timer_x = min(timer_x, game_layout["map_rect"].right - 36)
     draw_timer_panel(fenetre, remaining, midtop=(timer_x, HUD_PADDING))
 
-    session.build_action_rects = draw_selected_hex_panel(fenetre, mouse_pos, game_layout["selected_rect"])
+    session.panel_action_rects = draw_selected_hex_panel(fenetre, mouse_pos, game_layout["selected_rect"])
     session.end_turn_rect = draw_end_turn_button(fenetre, mouse_pos, game_layout["sidebar_rect"])
     ressources.draw_resources_overlay(fenetre, session.current_player_resources, panel_rect=game_layout["resources_rect"])
     draw_status_banner(fenetre, (game_layout["map_rect"].centerx, game_layout["map_rect"].y - 10))
+
+    if session.winner_name:
+        draw_info_panel(
+            fenetre,
+            [f"Victoire de {session.winner_name}", "Echap pour revenir au menu"],
+            (game_layout["map_rect"].centerx, game_layout["map_rect"].centery),
+            align="center",
+            font=FONT_HUD,
+        )
 
 
 running = True
@@ -898,10 +1177,12 @@ while running:
                         elif btn.action == "options":
                             fenetre, menu = show_options(fenetre, menu, clock)
             elif session.game_state in ("game", "multi_game"):
+                if session.winner_name:
+                    continue
                 handled = False
-                for rect, building_id in session.build_action_rects:
+                for rect, payload in session.panel_action_rects:
                     if rect.collidepoint(mouse_pos):
-                        handle_build_action(building_id)
+                        handle_panel_action(payload)
                         handled = True
                         break
 
